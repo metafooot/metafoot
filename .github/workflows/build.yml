@@ -35,28 +35,14 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      # Copy your manually uploaded icons (mipmap) into the fresh android folder
-      - name: Copy manual app icons
+      # Copy ALL your manual resources (icons + splash)
+      - name: Copy manual resources
         run: |
           if [ -d "resources/android/res" ]; then
             cp -r resources/android/res/* android/app/src/main/res/
           fi
 
-      # Generate the splash screen image from icon.png
-      - name: Generate splash screen from icon.png
-        run: |
-          npm install sharp
-          mkdir -p android/app/src/main/res/drawable-nodpi
-          node -e "
-          const sharp = require('sharp');
-          sharp('icon.png')
-            .resize(288, 288)
-            .toFile('android/app/src/main/res/drawable-nodpi/splash.png')
-            .then(() => console.log('Splash image created'))
-            .catch(err => console.error(err));
-          "
-
-      # Delete the adaptive icon XML so your manual PNGs are used (app icon fix)
+      # Delete the adaptive icon XML so your PNGs are used
       - name: Remove adaptive icon XML
         run: rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 
