@@ -45,8 +45,16 @@ jobs:
       # Generate the splash screen image from icon.png
       - name: Generate splash screen from icon.png
         run: |
+          npm install sharp
           mkdir -p android/app/src/main/res/drawable-nodpi
-          npx sharp-cli --resize 288x288 --input icon.png --output android/app/src/main/res/drawable-nodpi/splash.png
+          node -e "
+          const sharp = require('sharp');
+          sharp('icon.png')
+            .resize(288, 288)
+            .toFile('android/app/src/main/res/drawable-nodpi/splash.png')
+            .then(() => console.log('Splash image created'))
+            .catch(err => console.error(err));
+          "
 
       # Delete the adaptive icon XML so your manual PNGs are used (app icon fix)
       - name: Remove adaptive icon XML
