@@ -6,5 +6,11 @@
   "server": {
     "url": "https://metafoot.top",
     "cleartext": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "backgroundColor": "#0a0a0a"
+    }
   }
 }
