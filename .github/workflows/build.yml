@@ -35,11 +35,16 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      # The corrected icon generation step (--iconPath removed)
-      - name: Generate app icons using official Capacitor Assets
+      # Copy your pre‑generated icons into the correct location
+      - name: Copy manual app icons
         run: |
-          npm install @capacitor/assets --save-dev
-          npx @capacitor/assets generate --android --iconBackgroundColor '#0a0a0a'
+          if [ -d "resources/android/res" ]; then
+            cp -r resources/android/res/* android/app/src/main/res/
+          fi
+
+      # DELETE the adaptive icon XML – this is the magic line that makes your PNGs work
+      - name: Remove adaptive icon XML so manual icons are used
+        run: rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 
       - name: Accept Android SDK licenses & install required packages
         run: |
