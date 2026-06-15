@@ -35,7 +35,7 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      # 🔥 Delete all default Capacitor icon files so they don't override yours
+      # 1. Remove ALL default Capacitor icon files
       - name: Remove default Capacitor icons
         run: |
           rm -f android/app/src/main/res/mipmap-*/ic_launcher.png
@@ -43,7 +43,7 @@ jobs:
           rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
           rm -f android/app/src/main/res/drawable/ic_launcher_background.xml
 
-      # Copy your own icons, splash, and theme
+      # 2. Copy your manually uploaded icons, splash, and theme
       - name: Copy manual resources
         run: |
           if [ -d "resources/android/res" ]; then
@@ -56,11 +56,22 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" || true
 
+      # 3. Build the APK – this time we capture EVERYTHING into a file
       - name: Build APK
+        id: build
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
 
+      # 4. If the build failed, show the last 200 lines of the log in a separate step
+      - name: Show build error (if any)
+        if: failure()
+        run: |
+          echo "========== BUILD FAILED – LAST 200 LINES =========="
+          tail -n 200 android/build.log
+          exit 1
+
+      # 5. Upload the APK only if the file was actually created
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
