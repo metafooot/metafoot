@@ -53,22 +53,21 @@ jobs:
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" || true
 
       - name: Build APK
-        id: build_apk
+        id: build
         run: |
           cd android
           ./gradlew assembleDebug 2>&1 | tee build.log
-        continue-on-error: true   # Allow the workflow to continue even if build fails
 
-      - name: Show build error if failed
-        if: steps.build_apk.outcome == 'failure'
-        run: |
-          echo "======= BUILD FAILED – LAST 100 LINES OF LOG ======="
-          tail -n 100 android/build.log
-          exit 1
-
-      - name: Upload APK (only if build succeeded)
-        if: steps.build_apk.outcome == 'success'
+      - name: Upload APK (if it was produced)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: metafoot-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Print build error (if build failed)
+        if: failure()
+        run: |
+          echo "======= BUILD FAILED – LAST 100 LINES OF LOG ======="
+          tail -n 100 android/build.log
+          exit 1
