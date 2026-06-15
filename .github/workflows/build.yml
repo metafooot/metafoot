@@ -35,16 +35,21 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      # Copy ALL your manual resources (icons + splash)
+      # Copy all manual resources (icons, splash, styles)
       - name: Copy manual resources
         run: |
           if [ -d "resources/android/res" ]; then
             cp -r resources/android/res/* android/app/src/main/res/
           fi
 
-      # Delete the adaptive icon XML so your PNGs are used
+      # Remove adaptive icon XML so your manual PNGs are used
       - name: Remove adaptive icon XML
         run: rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+
+      # Apply the custom theme to AndroidManifest.xml
+      - name: Apply custom theme
+        run: |
+          sed -i 's/<application /<application android:theme="@style\/AppTheme" /' android/app/src/main/AndroidManifest.xml
 
       - name: Accept Android SDK licenses & install required packages
         run: |
