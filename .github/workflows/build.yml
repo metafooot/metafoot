@@ -35,17 +35,6 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      # Copy all manual resources (icons, splash, custom theme)
-      - name: Copy manual resources
-        run: |
-          if [ -d "resources/android/res" ]; then
-            cp -r resources/android/res/* android/app/src/main/res/
-          fi
-
-      # Delete the adaptive icon XML so your manual PNGs are used
-      - name: Remove adaptive icon XML
-        run: rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-
       - name: Accept Android SDK licenses & install required packages
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
@@ -53,21 +42,12 @@ jobs:
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" || true
 
       - name: Build APK
-        id: build
         run: |
           cd android
-          ./gradlew assembleDebug 2>&1 | tee build.log
+          ./gradlew assembleDebug
 
-      - name: Upload APK (if it was produced)
-        if: always()
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: metafoot-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Print build error (if build failed)
-        if: failure()
-        run: |
-          echo "======= BUILD FAILED – LAST 100 LINES OF LOG ======="
-          tail -n 100 android/build.log
-          exit 1
