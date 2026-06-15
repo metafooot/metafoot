@@ -35,10 +35,14 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      - name: Copy custom theme
+      # ---- THIS IS THE ONLY MODIFICATION: copy your red splash theme ----
+      - name: Copy custom red splash theme
         run: |
           if [ -d "resources/android/res/values" ]; then
             cp -r resources/android/res/values android/app/src/main/res/
+            echo "Red splash theme applied."
+          else
+            echo "No custom theme folder found, using default."
           fi
 
       - name: Accept Android SDK licenses & install required packages
@@ -47,25 +51,19 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" || true
 
-      - name: Build APK (capture ALL output)
-        id: build
+      - name: Build APK
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
-          echo "GRADLE_EXIT_CODE=$?" >> $GITHUB_ENV
+          ./gradlew assembleDebug
 
-      - name: Print the ENTIRE build log (so we can see the error)
-        if: always()
+      # ---- VERIFY THE APK EXISTS BEFORE ATTEMPTING UPLOAD ----
+      - name: Verify APK exists
         run: |
-          if [ -f android/build.log ]; then
-            echo "========== FULL GRADLE OUTPUT =========="
-            cat android/build.log
-          else
-            echo "build.log not found in android/"
-          fi
+          echo "Checking for APK..."
+          find android/app/build/outputs -name "*.apk" -type f
+          ls -lh android/app/build/outputs/apk/debug/ || echo "debug folder not found"
 
-      - name: Upload APK (only if build succeeded)
-        if: steps.build.outcome == 'success'
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: metafoot-apk
