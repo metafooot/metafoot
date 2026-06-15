@@ -57,17 +57,23 @@ jobs:
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" || true
 
       - name: Build APK
+        id: build
         run: |
           cd android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug 2>&1 | tee build.log
+        continue-on-error: true
 
-      # NEW: Show exactly what files exist in the output folder
-      - name: List APK output folder
+      # If the build fails, show the error clearly in a separate step
+      - name: Show Gradle error (if build failed)
+        if: steps.build.outcome == 'failure'
         run: |
-          echo "Contents of android/app/build/outputs/apk/:"
-          find android/app/build/outputs/apk -type f || echo "No files found"
+          echo "========== BUILD FAILED – GRADLE ERROR =========="
+          tail -n 200 android/build.log
+          exit 1
 
+      # If the build succeeds, upload the APK
       - name: Upload APK
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: metafoot-apk
