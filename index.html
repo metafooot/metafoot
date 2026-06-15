@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="google-adsense-account" content="ca-pub-1997788566129856">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>METAFOOT — ID Login</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1"></script>
+    <!-- Google AdSense verification meta tag -->
+    <meta name="google-adsense-account" content="ca-pub-1997788566129856">
     <!-- Google AdSense TEST code – replace with your real ID after approval -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3940256099942544" crossorigin="anonymous"></script>
     <style>
@@ -303,6 +304,23 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* APK Download Modal button */
+        .apk-download-btn {
+            background: linear-gradient(95deg, #ff3333, #990000);
+            border: none;
+            padding: 0.9rem 1.5rem;
+            border-radius: 60px;
+            font-weight: bold;
+            color: white;
+            font-size: 1.1rem;
+            text-decoration: none;
+            display: inline-block;
+            width: 100%;
+            margin: 0.8rem 0;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 50, 50, 0.5);
+        }
+
         @media (max-width: 480px) {
             .blockchain-modal { width: 130px; height: 130px; }
             .mining-rate { font-size: 1.5rem; }
@@ -428,9 +446,7 @@
         </div>
     </div>
 
-    <!-- ===== ALL OTHER SCREENS (unchanged from last full working version) ===== -->
-    <!-- Referral, Tasks, Ecosystem, Pre-sale, Halving, Staking, PvP, Tournaments, Vision, Virtual Card, Updates, Legal, Whitepaper, Training, Profile, Modals -->
-    <!-- The complete HTML includes all of them; I'm including them here verbatim. -->
+    <!-- Referral Screen -->
     <div id="referralScreen" class="screen hidden">
         <div class="info-screen">
             <div class="info-card" style="cursor:default;max-width:500px;margin:0 auto;">
@@ -462,6 +478,7 @@
         </div>
     </div>
 
+    <!-- Tasks Screen -->
     <div id="taskScreen" class="screen hidden">
         <div class="info-screen">
             <div class="info-card" style="cursor:default;">
@@ -471,6 +488,7 @@
         </div>
     </div>
 
+    <!-- Ecosystem Screen -->
     <div id="ecosystemScreen" class="screen hidden">
         <div style="text-align:center;max-width:500px;margin:0 auto;">
             <h2 style="font-size:2rem;background:linear-gradient(135deg,#ff8888,#ff2222);-webkit-background-clip:text;background-clip:text;color:transparent;"><i class="fas fa-globe"></i> METAFOOT Ecosystem</h2>
@@ -484,7 +502,7 @@
         </div>
     </div>
 
-    <!-- Pre-sale full screen -->
+    <!-- Pre‑sale screen -->
     <div id="preSaleScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto; text-align:center; color: #ffffff;">
             <h1 style="color:#ffaaaa;">🚀 $FOOT Pre‑sale</h1>
@@ -503,7 +521,7 @@
         </div>
     </div>
 
-    <!-- Halving full screen -->
+    <!-- Halving screen -->
     <div id="halvingScreen" class="screen hidden">
         <div style="width:100%;max-width:600px;margin:0 auto; text-align:center;">
             <h1 style="color:#ffaaaa;">📉 HALVING MECHANISM</h1>
@@ -513,7 +531,7 @@
         </div>
     </div>
 
-    <!-- Ecosystem sub-screens (unchanged) -->
+    <!-- Stake screen (ecosystem sub‑screen) -->
     <div id="stakeScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto;">
             <div class="stake-details">
@@ -527,6 +545,7 @@
         </div>
     </div>
 
+    <!-- PvP screen (ecosystem sub‑screen) -->
     <div id="pvpScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto;">
             <div class="pvp-details">
@@ -540,6 +559,7 @@
         </div>
     </div>
 
+    <!-- Tournaments screen (ecosystem sub‑screen) -->
     <div id="tournamentsScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto;">
             <div class="tournaments-details">
@@ -553,6 +573,7 @@
         </div>
     </div>
 
+    <!-- Vision Details screen -->
     <div id="visionDetailsScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto;">
             <div class="vision-details">
@@ -574,6 +595,7 @@
         </div>
     </div>
 
+    <!-- Virtual Card screen -->
     <div id="virtualCardScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto;">
             <div class="virtualcard-details">
@@ -598,6 +620,7 @@
         </div>
     </div>
 
+    <!-- Legal Screen -->
     <div id="legalScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto;">
             <div class="legal-details">
@@ -621,6 +644,7 @@
         </div>
     </div>
 
+    <!-- Whitepaper Screen -->
     <div id="whitepaperScreen" class="screen hidden">
         <div style="width:100%;max-width:800px;margin:0 auto;">
             <h2 style="font-size:2rem;font-weight:800;background:linear-gradient(135deg,#ff8888,#ff2222);-webkit-background-clip:text;background-clip:text;color:transparent;text-align:center;margin-bottom:1rem;">📄 Whitepaper</h2>
@@ -628,6 +652,7 @@
         </div>
     </div>
 
+    <!-- Training Screen -->
     <div id="trainingScreen" class="screen hidden">
         <div style="width:100%;max-width:550px;margin:0 auto;">
             <h2 style="color:#ffaaaa;">🏋️ Train Your Player</h2>
@@ -642,9 +667,11 @@
         </div>
     </div>
 
+    <!-- Buy / Sell Player screens (placeholders) -->
     <div id="buyPlayerScreen" class="screen hidden"><div style="text-align:center;padding:2rem;"><h2>🛒 Buy Player</h2><div class="info-card"><div class="eco-title">Transfer Market Coming Soon</div></div></div></div>
     <div id="sellPlayerScreen" class="screen hidden"><div style="text-align:center;padding:2rem;"><h2>💰 Sell Player</h2><div class="info-card"><div class="eco-title">Transfer Market Coming Soon</div></div></div></div>
 
+    <!-- Profile Screen -->
     <div id="profileScreen" class="screen hidden">
         <div class="profile-form" style="max-width:400px;margin:0 auto;">
             <h2 style="text-align:center;color:#ffaaaa;">👤 Profile</h2>
@@ -708,7 +735,7 @@
 
 <script>
 (function(){
-    // ============ API Base URL (still used for mining, claims, referrals) ============
+    // ============ API Base URL ============
     const API_BASE = 'https://metafoot-node.onrender.com';
 
     // ============ UPDATES GIST URL (YOUR GIST) ============
@@ -725,7 +752,7 @@
     const LAST_CLAIM_KEY = 'metafoot_last_claim';
     const ACTIVE_MINERS_KEY = 'metafoot_active_miners';
     const TOTAL_DISTRIBUTED_KEY = 'metafoot_total_distributed';
-    const TOTAL_AIRDROP_CAP = 150000000;
+    const TOTAL_AIRDROP_CAP = 150000000;  // 150M
     const REF_CODE_V2_KEY = 'metafoot_ref_code_v2';
     const ENCRYPTED_SEED_KEY = 'metafoot_encrypted_seed';
     const SESSION_KEY = 'metafoot_session';
@@ -936,7 +963,6 @@
     }
     function clearSession() { localStorage.removeItem(SESSION_KEY); }
 
-    // Helper: load seedphrase from localStorage into variable
     function loadSeedphraseFromStorage() {
         const stored = localStorage.getItem(ENCRYPTED_SEED_KEY);
         if (stored) currentSeedphrase = stored;
@@ -949,6 +975,22 @@
         customModal.classList.add('active');
     }
     window.showModal = showModal;
+
+    // ---- NEW FUNCTION: Show APK download modal ----
+    function showApkDownloadModal() {
+        const apkUrl = 'https://gh-proxy.com/https://github.com/metafooot/Metafooot/releases/download/Metafoot/app-debug.apk';
+        customModalBox.innerHTML = `
+            <h3 style="color:#ffaaaa;margin-bottom:1rem;">⚽ Download the METAFOOT App</h3>
+            <div style="color:#ffcccc;margin-bottom:1.2rem;">
+                <p>For the best experience, download our app.</p>
+                <p style="margin-top:0.8rem;">✅ Faster mining &amp; never miss a claim</p>
+                <p style="margin-top:0.3rem;">✅ Exclusive bonuses inside the app</p>
+            </div>
+            <a href="${apkUrl}" download class="apk-download-btn">⚡ Download APK</a>
+            <button class="action-btn" style="background:transparent;border:1px solid #ff5555;color:#ffaaaa;" onclick="document.getElementById('customModalOverlay').classList.remove('active')">Continue in browser</button>
+        `;
+        customModal.classList.add('active');
+    }
 
     function showLoadingModal() {
         document.getElementById('loadingModalOverlay').classList.add('active');
@@ -1187,7 +1229,7 @@
         showModal(success?'Copied':'Manual Copy', success?'Referral code copied.':`Select and copy: <span style="font-family:monospace;">${code}</span>`);
     });
 
-    // ---------- Updates & Bell Badge (now powered by GitHub Gist) ----------
+    // ---------- Updates & Bell Badge ----------
     async function fetchUpdates() {
         try {
             const res = await fetch(UPDATES_GIST_URL);
@@ -1330,7 +1372,23 @@
             initApp(result.accountId);
             authScreen.classList.add('hidden'); appContainer.style.display='block';
             document.getElementById('miningScreen').classList.remove('hidden');
-            showModal('Wallet Created', `Your Account ID: <span style="font-family:monospace;">${result.accountId}</span><br>Seedphrase (save safely):<br><span style="font-family:monospace;">${result.seedphrase}</span>`);
+            // Show seedphrase with "I've saved it" button that triggers APK download modal
+            customModalBox.innerHTML = `
+                <h3 style="color:#ffaaaa;margin-bottom:1rem;">Wallet Created 🎉</h3>
+                <div style="color:#ffcccc;">
+                    <p><strong>Your Account ID:</strong><br><span style="font-family:monospace;">${result.accountId}</span></p>
+                    <p style="margin-top:1rem;"><strong>Seedphrase (save safely):</strong><br><span style="font-family:monospace;word-break:break-all;">${result.seedphrase}</span></p>
+                    <p style="color:#ff8888;font-size:0.8rem;margin-top:0.5rem;">⚠️ Never share this with anyone.</p>
+                </div>
+                <button class="action-btn" id="confirmSeedphraseBtn">I've saved my seedphrase</button>
+                <button class="action-btn" style="background:transparent;border:1px solid #ff5555;color:#ffaaaa;margin-top:0.5rem;" onclick="document.getElementById('customModalOverlay').classList.remove('active')">Close</button>
+            `;
+            customModal.classList.add('active');
+            // When user confirms they saved seedphrase, close this modal and open APK download modal
+            document.getElementById('confirmSeedphraseBtn').addEventListener('click', ()=>{
+                customModal.classList.remove('active');
+                showApkDownloadModal();
+            });
             playGamepadSound();
             await autoConnectReferral();
         } catch(e) { document.getElementById('createError').innerText = 'Error creating wallet.'; }
