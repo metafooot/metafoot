@@ -4,6 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>METAFOOT — ID Login</title>
+
+    <!-- ====== Referral Preview Meta Tags (Social Sharing) ====== -->
+    <!-- Replace the og:image URL below with your DIRECT ImgBB link (i.ibb.co/... .png) -->
+    <meta property="og:title" content="Join me on METAFOOT ⚽">
+    <meta property="og:description" content="Early miners shape the future. $FOOT brings football management, player/team renting, virtual card, autonomous cars, virtual machine to deploy smart contracts into one ecosystem. Secure your spot now.">
+    <meta property="og:image" content="https://i.ibb.co/PLACEHOLDER/your-direct-image.png">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://metafoot.top">
+
+    <!-- Twitter Card (for X / Twitter) -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Join me on METAFOOT ⚽">
+    <meta name="twitter:description" content="Early miners shape the future. $FOOT brings football management, player/team renting, virtual card, autonomous cars, virtual machine to deploy smart contracts into one ecosystem. Secure your spot now.">
+    <meta name="twitter:image" content="https://i.ibb.co/PLACEHOLDER/your-direct-image.png">
+    <!-- ============================================================ -->
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
@@ -976,9 +992,9 @@
     }
     window.showModal = showModal;
 
-    // ---- NEW FUNCTION: Show APK download modal ----
+    // ---- APK Download Modal (fixed URL) ----
     function showApkDownloadModal() {
-        const apkUrl = 'https://gh-proxy.com/https://github.com/metafooot/Metafooot/releases/download/Metafoot/app-debug.apk';
+        const apkUrl = 'https://github.com/metafooot/Metafoott/releases/download/Metafoot/app-debug.apk';
         customModalBox.innerHTML = `
             <h3 style="color:#ffaaaa;margin-bottom:1rem;">⚽ Download the METAFOOT App</h3>
             <div style="color:#ffcccc;margin-bottom:1.2rem;">
@@ -1122,41 +1138,55 @@
     async function refreshReferralInfo() {
         const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
         if (!code || code.length !== 12) return;
+
+        // Keep existing local list as fallback
+        const existingList = getReferralList();
+
         try {
             const res = await fetch(`${API_BASE}/referral-info?code=${code}`);
-            if (!res.ok) return;
+            if (!res.ok) {
+                updateReferralUIFromList(existingList);
+                return;
+            }
             const info = await res.json();
             const friends = info.friends || [];
             const totalEarned = info.totalEarned || 0;
-            const localList = friends.map(f => ({ referrer:code, referred:f.referred, timestamp:f.timestamp }));
-            localStorage.setItem(REFERRALS_KEY, JSON.stringify(localList));
+
+            // Merge server list with existing local list (never lose data)
+            const existingReferred = new Set(existingList.map(r => r.referred));
+            let mergedList = [...existingList];
+            friends.forEach(f => {
+                if (!existingReferred.has(f.referred)) {
+                    mergedList.push({ referrer: code, referred: f.referred, timestamp: f.timestamp });
+                }
+            });
+            localStorage.setItem(REFERRALS_KEY, JSON.stringify(mergedList));
+
             const lastCollected = getLastCollectedReferralEarnings();
             if (totalEarned > lastCollected) {
                 addToUserBalance(totalEarned - lastCollected);
                 setLastCollectedReferralEarnings(totalEarned);
                 saveUserToCloud();
             }
-            document.getElementById('pendingReferralAmount').innerText = totalEarned.toFixed(2);
-            document.getElementById('referralCount').innerText = friends.length;
-            const friendsContainer = document.getElementById('friendsListContainer');
-            if (friends.length > 0) {
-                friendsContainer.innerHTML = '<strong>Invited Friends:</strong><ul class="friends-list">' + friends.map(f => `<li>${f.referred} <small style="color:#888;">(${new Date(f.timestamp).toLocaleDateString()})</small></li>`).join('') + '</ul>';
-            } else friendsContainer.innerHTML = '<p style="font-size:0.8rem; color:#888;">No friends invited yet.</p>';
-        } catch(e) {}
+            updateReferralUIFromList(mergedList, totalEarned);
+        } catch(e) {
+            updateReferralUIFromList(existingList);
+        }
     }
 
-    function updateReferralUI() {
-        if (!currentAccountId || !currentReferralCode) return;
+    function updateReferralUIFromList(list, totalEarned = null) {
+        if (!currentReferralCode) return;
         document.getElementById('refCodeDisplay').textContent = currentReferralCode;
         document.getElementById('refCodeDisplay').classList.add('blurred');
-        const list = getReferralList();
         const invitedFriends = list.filter(r => r.referrer === currentReferralCode);
-        document.getElementById('pendingReferralAmount').innerText = (invitedFriends.length * getReferralReward()).toFixed(2);
+        document.getElementById('pendingReferralAmount').innerText = totalEarned !== null ? totalEarned.toFixed(2) : (invitedFriends.length * getReferralReward()).toFixed(2);
         document.getElementById('referralCount').innerText = invitedFriends.length;
         const friendsContainer = document.getElementById('friendsListContainer');
         if (invitedFriends.length > 0) {
             friendsContainer.innerHTML = '<strong>Invited Friends:</strong><ul class="friends-list">' + invitedFriends.map(f => `<li>${f.referred} <small style="color:#888;">(${new Date(f.timestamp).toLocaleDateString()})</small></li>`).join('') + '</ul>';
-        } else friendsContainer.innerHTML = '<p style="font-size:0.8rem; color:#888;">No friends invited yet.</p>';
+        } else {
+            friendsContainer.innerHTML = '<p style="font-size:0.8rem; color:#888;">No friends invited yet.</p>';
+        }
     }
 
     async function addReferralOnServer(referrerCode, referredCode) {
