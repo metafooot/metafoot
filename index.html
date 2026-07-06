@@ -81,7 +81,9 @@
             padding: 0.6rem 1rem 0.2rem;
             display: flex;
             justify-content: center;
+            align-items: center;
             pointer-events: none;
+            gap: 0.4rem;
         }
         .app-title {
             font-size: 2rem;
@@ -92,6 +94,25 @@
             color: transparent;
             letter-spacing: -0.5px;
         }
+        .ambassador-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            font-size: 0.9rem;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid;
+            box-shadow: 0 0 8px;
+            pointer-events: none;
+        }
+        .ambassador-badge.lite { color: #ffffff; border-color: #ffffff; box-shadow-color: #ffffff; }
+        .ambassador-badge.bronze { color: #cd7f32; border-color: #cd7f32; box-shadow-color: #cd7f32; }
+        .ambassador-badge.silver { color: #c0c0c0; border-color: #c0c0c0; box-shadow-color: #c0c0c0; }
+        .ambassador-badge.gold { color: #ffd700; border-color: #ffd700; box-shadow-color: #ffd700; }
+        .ambassador-badge.team { color: #e5e4e2; border-color: #e5e4e2; box-shadow-color: #e5e4e2; }
+
         .header-controls-row {
             width: 100%;
             padding: 0.2rem 1rem 0.6rem;
@@ -263,9 +284,9 @@
             font-size: 0.9rem;
         }
 
-        /* Bonus ad button */
-        .bonus-btn {
-            background: linear-gradient(95deg, #228B22, #006400);
+        /* Boost button restyled to red */
+        .boost-btn {
+            background: linear-gradient(95deg, #ff3333, #990000);
             border: none;
             padding: 0.6rem 1.2rem;
             border-radius: 50px;
@@ -278,7 +299,7 @@
             align-items: center;
             gap: 0.5rem;
         }
-        .bonus-btn:disabled {
+        .boost-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -342,6 +363,28 @@
             box-shadow: 0 0 15px rgba(255, 50, 50, 0.5);
         }
 
+        /* Dashboard specific */
+        .dashboard-card {
+            background: rgba(5,10,22,0.7);
+            border-radius: 2rem;
+            padding: 2rem;
+            border: 2px solid #ff5555;
+            color: white;
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+            backdrop-filter: blur(8px);
+        }
+        .dashboard-stat {
+            font-size: 1.2rem;
+            margin: 1rem 0;
+        }
+        .dashboard-big {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #ffaaaa;
+        }
+
         @media (max-width: 480px) {
             .blockchain-modal { width: 130px; height: 130px; }
             .mining-rate { font-size: 1.5rem; }
@@ -393,6 +436,9 @@
     <div class="top-bar">
         <div class="header-title-row">
             <div class="app-title">METAFOOT</div>
+            <div class="ambassador-badge" id="ambassadorBadge" style="display:none;" title="Ambassador">
+                <i class="fas fa-check"></i>
+            </div>
         </div>
         <div class="header-controls-row">
             <div class="left-controls">
@@ -412,6 +458,7 @@
     <!-- Side Menu -->
     <div id="sideMenu" class="side-menu">
         <div class="menu-item" data-action="profile"><i class="fas fa-user"></i> Profile</div>
+        <div class="menu-item" data-action="airdropDashboard"><i class="fas fa-chart-pie"></i> Airdrop Dashboard</div>
         <div class="menu-item" data-action="whitepaper"><i class="fas fa-file-alt"></i> Whitepaper</div>
         <div class="menu-item" data-action="halving"><i class="fas fa-chart-line"></i> Halving</div>
         <div class="menu-item" data-action="legal"><i class="fas fa-gavel"></i> Legal</div>
@@ -425,7 +472,7 @@
         <div class="nav-item" id="navReferral"><i class="fas fa-link"></i><span>Referral</span></div>
         <div class="nav-item" id="navTask"><i class="fas fa-tasks"></i><span>Task</span></div>
         <div class="nav-item" id="navEcosystem"><i class="fas fa-globe"></i><span>Ecosystem</span></div>
-        <div class="nav-item" id="navPreSale"><i class="fas fa-tag"></i><span>Pre-sale</span></div>
+        <div class="nav-item" id="navGamesApps"><i class="fas fa-gamepad"></i><span>Games & Apps</span></div>
     </div>
 
     <!-- All Screens -->
@@ -445,8 +492,8 @@
             </div>
             <div class="mining-rate" id="miningRateDisplay">4 $FOOT / day</div>
             <div id="actionButtonsContainer" class="action-buttons"></div>
-            <!-- Bonus ad button -->
-            <button id="bonusAdBtn" class="bonus-btn" disabled>🎬 Watch ad for 0.5 $FOOT</button>
+            <!-- Boost button -->
+            <button id="boostBtn" class="boost-btn" disabled>⚡ Boost</button>
             <div id="bonusCooldownText" class="bonus-cooldown"></div>
             <!-- Test ad unit placeholder -->
             <div style="margin: 1rem auto; max-width: 480px;">
@@ -506,7 +553,6 @@
                 <div class="info-title"><i class="fas fa-tasks"></i> Daily Social Tasks</div>
                 <div class="info-content"><ul class="task-list" id="dailyTasksList"></ul><p style="margin-top:1rem;font-size:0.8rem;color:#ffaaaa;">⏱️ Cooldown: 30 minutes between claims</p></div>
             </div>
-            <!-- Placeholder for future ad units (BitMedia, Coinzilla, etc.) -->
         </div>
     </div>
 
@@ -524,22 +570,25 @@
         </div>
     </div>
 
-    <!-- Pre‑sale screen -->
-    <div id="preSaleScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto; text-align:center; color: #ffffff;">
-            <h1 style="color:#ffaaaa;">🚀 $FOOT Pre‑sale</h1>
-            <p style="margin: 1rem 0; color: #ffffff;">Early supporters will be able to purchase $FOOT before public launch.</p>
-            <div class="section" style="text-align:left; color: #ffffff;">
-                <p><strong>Benefits for early adopters:</strong></p>
-                <ul style="margin-left:1.5rem; margin-top:0.5rem; color: #ffffff;">
-                    <li>🎯 Bonus $FOOT to build your team.</li>
-                    <li>⚡ Priority access to the Unity game.</li>
-                    <li>🏟️ Exclusive in‑game stadium customisation.</li>
-                    <li>📈 Potential long‑term value if the ecosystem grows.</li>
-                </ul>
-                <p style="margin-top:1rem; font-size:0.9rem; color:#ffaaaa;">No guarantees – only participate with what you can afford. The pre‑sale date will be announced on our official channels.</p>
+    <!-- Games & Apps screen (placeholder) -->
+    <div id="gamesAppsScreen" class="screen hidden">
+        <div style="text-align:center;max-width:500px;margin:0 auto;color:#ffffff;">
+            <h1><i class="fas fa-gamepad"></i> Games & Apps</h1>
+            <p style="margin:2rem;">Coming soon. Stay tuned for the METAFOOT game and partner apps.</p>
+            <button class="back-btn" id="backFromGamesAppsBtn">Back to Home</button>
+        </div>
+    </div>
+
+    <!-- Airdrop Dashboard Screen -->
+    <div id="airdropDashboardScreen" class="screen hidden">
+        <div style="width:100%;max-width:500px;margin:0 auto;">
+            <div class="dashboard-card">
+                <h2 style="color:#ffaaaa;"><i class="fas fa-chart-pie"></i> Airdrop Dashboard</h2>
+                <div class="dashboard-stat">Total Pool: <span class="dashboard-big">300,000,000</span> $FOOT</div>
+                <div class="dashboard-stat">Mined: <span class="dashboard-big" id="dashboardMined">0</span> $FOOT</div>
+                <div class="dashboard-stat" style="font-size:0.9rem;color:#ff8888;" id="dashboardPercent">(0.00% distributed)</div>
+                <button class="back-btn" id="backFromDashboardBtn">Back to Home</button>
             </div>
-            <button class="back-btn" id="backFromPreSaleBtn">Back to Home</button>
         </div>
     </div>
 
@@ -774,7 +823,7 @@
     const LAST_CLAIM_KEY = 'metafoot_last_claim';
     const ACTIVE_MINERS_KEY = 'metafoot_active_miners';
     const TOTAL_DISTRIBUTED_KEY = 'metafoot_total_distributed';
-    const TOTAL_AIRDROP_CAP = 150000000;  // 150M
+    const TOTAL_AIRDROP_CAP = 300000000;  // 300M
     const REF_CODE_V2_KEY = 'metafoot_ref_code_v2';
     const ENCRYPTED_SEED_KEY = 'metafoot_encrypted_seed';
     const SESSION_KEY = 'metafoot_session';
@@ -1053,13 +1102,13 @@
 
     document.getElementById('claimCircleBtn').addEventListener('click', claimReward);
 
-    // Slideshow
+    // Slideshow (no pre-sale)
     const summaries = ["Rental system","Train player","How you earn","Buy/sell player","Tournaments","League system","Knowledge challenge","Virtual Card","Football Academy","METAFOOT game"];
     let slideSeq = [], currentSlide = 0, slideTimeout, countdownInterval;
     const slideshowWrapper = document.getElementById('slideshowWrapper'), slideshowTimer = document.getElementById('slideshowTimer');
     function buildSlides() {
-        for(let i=0; i<summaries.length; i++) { slideSeq.push({type:'summary', text:`${i+1}. ${summaries[i]}`}); if((i+1)%3===0 && i!==summaries.length-1) slideSeq.push({type:'presale', text:'Pre-sale coming soon'}); }
-        slideshowWrapper.innerHTML = slideSeq.map(s => `<div class="slideshow-slide"><div class="slideshow-title">${s.type==='summary'?'⚽ METAFOOT':'🚀 Pre-sale'}</div><div class="slideshow-text">${s.text}</div></div>`).join('');
+        slideSeq = summaries.map((s,i)=>({ type:'summary', text:`${i+1}. ${s}` }));
+        slideshowWrapper.innerHTML = slideSeq.map(s => `<div class="slideshow-slide"><div class="slideshow-title">⚽ METAFOOT</div><div class="slideshow-text">${s.text}</div></div>`).join('');
         slideshowWrapper.style.transform = 'translateX(0%)';
     }
     function nextSlide() { currentSlide = (currentSlide+1) % slideSeq.length; slideshowWrapper.style.transform = `translateX(-${currentSlide*100}%)`; resetTimer(); }
@@ -1145,7 +1194,6 @@
         const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
         if (!code || code.length !== 12) return;
 
-        // Keep existing local list as fallback
         const existingList = getReferralList();
 
         try {
@@ -1158,7 +1206,6 @@
             const friends = info.friends || [];
             const totalEarned = info.totalEarned || 0;
 
-            // Merge server list with existing local list (never lose data)
             const existingReferred = new Set(existingList.map(r => r.referred));
             let mergedList = [...existingList];
             friends.forEach(f => {
@@ -1180,6 +1227,16 @@
         }
     }
 
+    function getReferralReward() {
+        const miners = getActiveMiners();
+        const base = 2;
+        if (miners<15000) return base;
+        if (miners<100000) return base/2;
+        if (miners<500000) return base/4;
+        if (miners<1000000) return base/8;
+        return base/16;
+    }
+
     function updateReferralUIFromList(list, totalEarned = null) {
         if (!currentReferralCode) return;
         document.getElementById('refCodeDisplay').textContent = currentReferralCode;
@@ -1193,6 +1250,8 @@
         } else {
             friendsContainer.innerHTML = '<p style="font-size:0.8rem; color:#888;">No friends invited yet.</p>';
         }
+        // Update ambassador badge
+        updateAmbassadorBadge(invitedFriends.length);
     }
 
     async function addReferralOnServer(referrerCode, referredCode) {
@@ -1212,16 +1271,6 @@
             }
             return result;
         } catch(e) { return { error:'Server unreachable' }; }
-    }
-
-    function getReferralReward() {
-        const miners = getActiveMiners();
-        const base = 2;
-        if (miners<15000) return base;
-        if (miners<100000) return base/2;
-        if (miners<500000) return base/4;
-        if (miners<1000000) return base/8;
-        return base/16;
     }
 
     function handleReferralSubmit() {
@@ -1245,6 +1294,34 @@
         const result = await addReferralOnServer(storedRef, currentReferralCode);
         if (result.success) showModal('Welcome!', `You've been connected via invite link and received ${(result.reward||getReferralReward()).toFixed(2)} $FOOT!`);
         sessionStorage.removeItem('invite_ref_code');
+    }
+
+    // Ambassador badge logic
+    function getAmbassadorTier(count) {
+        if (count >= 500) return 'team';
+        if (count >= 300) return 'gold';
+        if (count >= 100) return 'silver';
+        if (count >= 50) return 'bronze';
+        if (count >= 20) return 'lite';
+        return null;
+    }
+    function updateAmbassadorBadge(count) {
+        const badge = document.getElementById('ambassadorBadge');
+        if (!badge) return;
+        const tier = getAmbassadorTier(count);
+        if (!tier) {
+            badge.style.display = 'none';
+            return;
+        }
+        badge.style.display = 'inline-flex';
+        badge.className = 'ambassador-badge ' + tier;
+        badge.title = {
+            lite: 'Lite Ambassador (20+ refs)',
+            bronze: 'Bronze Ambassador (50+ refs)',
+            silver: 'Silver Ambassador (100+ refs)',
+            gold: 'Gold Ambassador (300+ refs)',
+            team: 'Team Ambassador (500+ refs)'
+        }[tier];
     }
 
     document.getElementById('navReferral').addEventListener('click', ()=> { showScreen('referralScreen'); refreshReferralInfo(); playGamepadSound(); });
@@ -1323,8 +1400,8 @@
         playGamepadSound();
     });
 
-    // ---------- Bonus Ad ----------
-    const bonusBtn = document.getElementById('bonusAdBtn');
+    // ---------- Boost (renamed from Bonus Ad) ----------
+    const boostBtn = document.getElementById('boostBtn');
     const bonusCooldownText = document.getElementById('bonusCooldownText');
     const adModal = document.getElementById('adModalOverlay');
     const adCountdownText = document.getElementById('adCountdownText');
@@ -1333,18 +1410,18 @@
     const adCloseBtn = document.getElementById('adCloseBtn');
     let adTimer = null, adSecondsLeft = 10, adReady = false;
 
-    function updateBonusButton() {
+    function updateBoostButton() {
         const last = getStorage(LAST_BONUS_CLAIM_KEY);
         const now = Date.now();
         const oneHour = 3600000;
         if (last && (now - parseInt(last)) < oneHour) {
-            bonusBtn.disabled = true;
+            boostBtn.disabled = true;
             const remaining = oneHour - (now - parseInt(last));
             const mins = Math.floor(remaining/60000);
             const secs = Math.floor((remaining%60000)/1000);
-            bonusCooldownText.innerText = `Next bonus in ${mins}m ${secs}s`;
+            bonusCooldownText.innerText = `Next boost in ${mins}m ${secs}s`;
         } else {
-            bonusBtn.disabled = false;
+            boostBtn.disabled = false;
             bonusCooldownText.innerText = '';
         }
     }
@@ -1372,21 +1449,28 @@
 
     function stopAdCountdown() { if (adTimer) { clearInterval(adTimer); adTimer = null; } adModal.classList.remove('active'); }
 
-    bonusBtn.addEventListener('click', ()=>{ if (!bonusBtn.disabled) startAdCountdown(); });
-    adClaimBtn.addEventListener('click', ()=>{
+    async function claimBoost() {
         if (!adReady) return;
-        addToUserBalance(0.5);  // reward 0.5 $FOOT
+        const amount = 0.5;
+        addToUserBalance(amount);
         setStorage(LAST_BONUS_CLAIM_KEY, Date.now().toString());
-        updateMiningStats(); updateBonusButton();
+        updateMiningStats(); updateBoostButton();
         stopAdCountdown();
+        // Notify server
+        try {
+            await fetch(`${API_BASE}/boost-claim`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ accountId: currentAccountId, amount }) });
+        } catch(e) {}
         saveUserToCloud();
         canvasConfetti({ particleCount:80, spread:60, origin:{y:0.7}, colors:['#228B22','#00ff00'] });
-        showModal('Bonus claimed', '🎉 You earned 0.5 $FOOT! Come back in an hour for another.');
+        showModal('Boost claimed', '🎉 You earned 0.5 $FOOT! Come back in an hour for another.');
         playGamepadSound();
-    });
+    }
+
+    boostBtn.addEventListener('click', ()=>{ if (!boostBtn.disabled) startAdCountdown(); });
+    adClaimBtn.addEventListener('click', claimBoost);
     adCloseBtn.addEventListener('click', stopAdCountdown);
-    setInterval(updateBonusButton, 1000);
-    updateBonusButton();
+    setInterval(updateBoostButton, 1000);
+    updateBoostButton();
 
     // Auth flow
     const loginForm = document.getElementById('loginForm');
@@ -1408,7 +1492,6 @@
             initApp(result.accountId);
             authScreen.classList.add('hidden'); appContainer.style.display='block';
             document.getElementById('miningScreen').classList.remove('hidden');
-            // Show seedphrase with "I've saved it" button that triggers APK download modal
             customModalBox.innerHTML = `
                 <h3 style="color:#ffaaaa;margin-bottom:1rem;">Wallet Created 🎉</h3>
                 <div style="color:#ffcccc;">
@@ -1420,7 +1503,6 @@
                 <button class="action-btn" style="background:transparent;border:1px solid #ff5555;color:#ffaaaa;margin-top:0.5rem;" onclick="document.getElementById('customModalOverlay').classList.remove('active')">Close</button>
             `;
             customModal.classList.add('active');
-            // When user confirms they saved seedphrase, close this modal and open APK download modal
             document.getElementById('confirmSeedphraseBtn').addEventListener('click', ()=>{
                 customModal.classList.remove('active');
                 showApkDownloadModal();
@@ -1481,7 +1563,6 @@
         } catch(e) { document.getElementById('seedRestoreError').innerText='Invalid seedphrase.'; }
     });
 
-    // ---------- loadProfile ----------
     function loadProfile() {
         document.getElementById('profileUsername').value = getStorage('profile_username')||'';
         document.getElementById('profileBalance').innerText = getUserBalance().toLocaleString()+' $FOOT';
@@ -1493,7 +1574,6 @@
         refEl.classList.add('blurred');
     }
 
-    // ---------- Profile buttons event listeners ----------
     let profileIdRevealed = false;
     document.getElementById('revealProfileIdBtn').addEventListener('click', ()=>{
         const idEl = document.getElementById('profileAccountId');
@@ -1533,14 +1613,12 @@
         showModal(success ? 'Copied' : 'Manual Copy', success ? 'Referral code copied.' : `Select and copy: <span style="font-family:monospace;">${code}</span>`);
     });
 
-    // Copy Seedphrase button
     document.getElementById('copySeedBtn').addEventListener('click', async ()=>{
         if (!currentSeedphrase) { showModal('Error', 'Seedphrase not loaded.'); return; }
         const success = await copyToClipboard(currentSeedphrase);
         showModal(success ? 'Copied' : 'Manual Copy', success ? 'Seedphrase copied to clipboard.' : `Select and copy: <span style="font-family:monospace;">${currentSeedphrase}</span>`);
     });
 
-    // ---------- initApp ----------
     function initApp(accountId, backupData = null, preloadedCloudData = null) {
         currentAccountId = accountId;
         currentReferralCode = getStorage(REF_CODE_V2_KEY);
@@ -1579,7 +1657,7 @@
                 if (userData.username) setStorage('profile_username', userData.username);
                 if (userData.referralCode) { setStorage(REF_CODE_V2_KEY, userData.referralCode); currentReferralCode = userData.referralCode; }
                 updateMiningStats();
-                updateReferralUI();
+                refreshReferralInfo();
                 loadAttributes();
                 renderTrainingScreen();
             }
@@ -1664,9 +1742,23 @@
     document.getElementById('navHome').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
     document.getElementById('navTask').addEventListener('click', ()=> { showScreen('taskScreen'); renderTasks(); playGamepadSound(); });
     document.getElementById('navEcosystem').addEventListener('click', ()=> { showScreen('ecosystemScreen'); playGamepadSound(); });
-    document.getElementById('navPreSale').addEventListener('click', ()=> { showScreen('preSaleScreen'); playGamepadSound(); });
+    document.getElementById('navGamesApps').addEventListener('click', ()=> { showScreen('gamesAppsScreen'); playGamepadSound(); });
 
     document.querySelector('[data-action="profile"]').addEventListener('click', ()=> { loadProfile(); showScreen('profileScreen'); playGamepadSound(); });
+    document.querySelector('[data-action="airdropDashboard"]').addEventListener('click', async ()=> {
+        showScreen('airdropDashboardScreen');
+        try {
+            const res = await fetch(`${API_BASE}/total-distributed`);
+            const data = await res.json();
+            const mined = data.totalDistributed;
+            document.getElementById('dashboardMined').innerText = mined.toLocaleString();
+            const percent = (mined / TOTAL_AIRDROP_CAP * 100).toFixed(2);
+            document.getElementById('dashboardPercent').innerText = `(${percent}% distributed)`;
+        } catch(e) {
+            document.getElementById('dashboardMined').innerText = 'N/A';
+        }
+        playGamepadSound();
+    });
     document.querySelector('[data-action="whitepaper"]').addEventListener('click', ()=> {
         document.getElementById('whitepaperContent').innerHTML = `
             <h1>METAFOOT Whitepaper</h1>
@@ -1726,7 +1818,8 @@
     document.getElementById('stakeBackHomeBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
     document.getElementById('pvpBackHomeBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
     document.getElementById('tournamentsBackHomeBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('backFromPreSaleBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
+    document.getElementById('backFromDashboardBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
+    document.getElementById('backFromGamesAppsBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
     document.getElementById('backFromHalvingBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
 
     // Tasks (renderTasks)
@@ -1736,9 +1829,32 @@
         const taskList = document.getElementById('dailyTasksList');
         taskList.innerHTML = `<li><span>📱 Visit Telegram Channel</span><button class="task-btn" id="telegramTaskBtn" ${tgReady?'':'disabled'}>${tgReady?'0.6 $FOOT':formatCooldown(tgLast)}</button></li><li><span>🐦 Visit X (Twitter)</span><button class="task-btn" id="xTaskBtn" ${xReady?'':'disabled'}>${xReady?'0.6 $FOOT':formatCooldown(xLast)}</button></li>`;
         function formatCooldown(last) { const remaining = COOLDOWN_MS - (now - last); const mins = Math.floor(remaining / 60000); const secs = Math.floor((remaining % 60000) / 1000); return `${mins}:${secs.toString().padStart(2,'0')}`; }
-        document.getElementById('telegramTaskBtn')?.addEventListener('click', () => { if(!tgReady) return; window.open('https://t.me/metafoott','_blank'); setStorage(TG_LAST_KEY, now); addToUserBalance(0.6); updateMiningStats(); playGamepadSound(); renderTasks(); saveUserToCloud(); });
-        document.getElementById('xTaskBtn')?.addEventListener('click', () => { if(!xReady) return; const start = Date.now(); window.location.href = 'twitter://user?screen_name=METAFOOTT'; setTimeout(()=>{ if(Date.now()-start<2000) window.open('https://x.com/METAFOOTT','_blank'); },500); setStorage(X_LAST_KEY, now); addToUserBalance(0.6); updateMiningStats(); playGamepadSound(); renderTasks(); saveUserToCloud(); });
-        if(window._taskInterval) clearInterval(window._taskInterval); window._taskInterval = setInterval(renderTasks, 1000);
+        async function handleTask(taskType) {
+            const lastKey = taskType === 'telegram' ? TG_LAST_KEY : X_LAST_KEY;
+            const last = parseInt(getStorage(lastKey))||0;
+            if (now - last < COOLDOWN_MS) return;
+            const amount = 0.6;
+            if (taskType === 'telegram') window.open('https://t.me/metafoott','_blank');
+            else {
+                const start = Date.now();
+                window.location.href = 'twitter://user?screen_name=METAFOOTT';
+                setTimeout(()=>{ if(Date.now()-start<2000) window.open('https://x.com/METAFOOTT','_blank'); },500);
+            }
+            setStorage(lastKey, now);
+            addToUserBalance(amount);
+            updateMiningStats();
+            playGamepadSound();
+            // Notify server
+            try {
+                await fetch(`${API_BASE}/task-claim`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ accountId: currentAccountId, taskType, amount }) });
+            } catch(e){}
+            renderTasks();
+            saveUserToCloud();
+        }
+        document.getElementById('telegramTaskBtn')?.addEventListener('click', () => { if(tgReady) handleTask('telegram'); });
+        document.getElementById('xTaskBtn')?.addEventListener('click', () => { if(xReady) handleTask('twitter'); });
+        if(window._taskInterval) clearInterval(window._taskInterval);
+        window._taskInterval = setInterval(renderTasks, 1000);
     }
 
     // Simple global intervals
