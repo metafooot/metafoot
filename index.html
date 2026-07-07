@@ -1,1881 +1,556 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>METAFOOT — ID Login</title>
+// server.js — Global counter + claim engine + cloud user data + admin stats + health check + referral server + updates system + stadium sales
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
-    <!-- ====== Referral Preview Meta Tags (Social Sharing) ====== -->
-    <meta property="og:title" content="Join me on METAFOOT ⚽">
-    <meta property="og:description" content="Early miners shape the future. $FOOT brings football management, player/team renting, virtual card, autonomous cars, virtual machine to deploy smart contracts into one ecosystem. Secure your spot now.">
-    <meta property="og:image" content="https://github.com/user-attachments/assets/d5b8fb21-7511-4303-a2b7-9b3f9b514e7c">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://metafoot.top">
+const DATA_FILE = path.join(__dirname, 'miners.json');
+const PORT = process.env.PORT || 3000;
 
-    <!-- Twitter Card (for X / Twitter) -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Join me on METAFOOT ⚽">
-    <meta name="twitter:description" content="Early miners shape the future. $FOOT brings football management, player/team renting, virtual card, autonomous cars, virtual machine to deploy smart contracts into one ecosystem. Secure your spot now.">
-    <meta name="twitter:image" content="https://github.com/user-attachments/assets/d5b8fb21-7511-4303-a2b7-9b3f9b514e7c">
-    <!-- ============================================================ -->
+// ---- CHANGE THIS TO YOUR OWN SECRET KEY ----
+const ADMIN_KEY = process.env.ADMIN_KEY || 'mysecret123';
 
-    <!-- BitMedia site verification -->
-    <meta name="bitmedia-site-verification" content="72af02c04bf039ba88d838be681ab6e2">
+// --------------- Persistent data ---------------
+let data = {
+  minersCounted: {},      // { accountId: true }
+  totalMiners: 0,
+  totalDistributed: 0,
+  claims: {},             // { accountId: timestamp }
+  users: {},              // { accountId: { balance, attributes, username, ... } }
+  referrals: [],          // { referrer, referred, timestamp }
+  referralRewards: {},    // { referralCode: totalEarned }
+  referralFriends: {},    // { referralCode: [ { referred, timestamp } ] }
+  updates: [],            // All updates live here
+  // ---------- Stadium ----------
+  stadiumsSold: 0,                 // number of stadiums sold (max 1000)
+  stadiumOwners: {}                // { accountId: true } to prevent double purchase
+};
 
-    <!-- Coinzilla site verification -->
-    <meta name="coinzilla" content="de8ddf13bd517de1d9ffeb688c59f791">
+// --------- Training cost constants ---------
+const BASE_COST = 0.3;
+const TIER_SIZE = 20;
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1"></script>
-    <!-- Google AdSense verification meta tag -->
-    <meta name="google-adsense-account" content="ca-pub-1997788566129856">
-    <!-- Google AdSense TEST code – replace with your real ID after approval -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3940256099942544" crossorigin="anonymous"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
-        body { font-family: 'Inter', sans-serif; background: radial-gradient(circle at 20% 30%, #0a0a0a, #000000); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; transition: opacity 0.4s; }
-        .screen.hidden { opacity: 0; pointer-events: none; visibility: hidden; }
+function getUpgradeCost(level) {
+  return BASE_COST * Math.pow(2, Math.floor(level / TIER_SIZE));
+}
 
-        .copyable-text {
-            user-select: text !important;
-            -webkit-user-select: text !important;
-            -moz-user-select: text !important;
-            -ms-user-select: text !important;
-        }
-
-        #authScreen { justify-content: center; background: radial-gradient(circle at 20% 30%, #0f0f1a, #000000); }
-        .auth-card { background: rgba(5,10,22,0.95); border-radius: 2.5rem; padding: 2rem 1.8rem; max-width: 480px; width: 90%; border: 2px solid #ff5555; box-shadow: 0 0 30px #ff333380; backdrop-filter: blur(8px); color: #ffcccc; }
-        .auth-logo { font-size: 3rem; margin-bottom: 0.3rem; color: #ff5555; filter: drop-shadow(0 0 8px #ff3333); text-align: center; }
-        .auth-title { font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #ffffff, #ffaaaa); -webkit-background-clip: text; background-clip: text; color: transparent; text-align: center; margin-bottom: 0.5rem; }
-        .auth-sub { text-align: center; margin-bottom: 1.5rem; font-size: 0.9rem; color: #ffbbbb; }
-        .auth-form { display: flex; flex-direction: column; gap: 1rem; }
-        .auth-input-group { display: flex; align-items: center; background: rgba(0,0,0,0.5); border-radius: 60px; padding: 0.2rem 1rem; border: 1px solid #ff5555; margin-bottom: 0.5rem; }
-        .auth-input-group i { color: #ff8888; width: 24px; }
-        .auth-input-group input, .auth-input-group textarea { width: 100%; background: transparent; border: none; padding: 0.8rem 0.5rem; color: white; font-size: 1rem; outline: none; resize: none; }
-        .auth-btn { background: linear-gradient(95deg, #ff3333, #990000); border: none; padding: 0.9rem; border-radius: 60px; font-weight: bold; color: white; font-size: 1rem; cursor: pointer; transition: 0.2s; margin-top: 0.5rem; width: 100%; }
-        .auth-btn.secondary { background: transparent; border: 1px solid #ff5555; color: #ffaaaa; }
-        .auth-btn:hover { background: #ff5555; transform: scale(1.01); }
-        .auth-links { display: flex; justify-content: space-between; margin-top: 1rem; font-size: 0.8rem; }
-        .auth-link { color: #ffaaaa; cursor: pointer; text-decoration: underline; }
-        .error-message { color: #ff8888; font-size: 0.8rem; text-align: center; min-height: 20px; margin-top: 0.5rem; }
-
-        /* ========== Stacked Header ========== */
-        .top-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            z-index: 100;
-            background: #0a0a0f;
-            border-bottom: 2px solid #ff5555;
-            box-shadow: 0 4px 12px rgba(255, 85, 85, 0.45);
-            display: flex;
-            flex-direction: column;
-            pointer-events: none;
-        }
-        .header-title-row {
-            width: 100%;
-            padding: 0.6rem 1rem 0.2rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            pointer-events: none;
-            gap: 0.4rem;
-        }
-        .app-title {
-            font-size: 2rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #ffffff, #ff8888);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            letter-spacing: -0.5px;
-        }
-        .ambassador-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            font-size: 0.9rem;
-            background: rgba(0,0,0,0.7);
-            border: 1px solid;
-            box-shadow: 0 0 8px;
-            pointer-events: none;
-        }
-        .ambassador-badge.lite { color: #ffffff; border-color: #ffffff; box-shadow-color: #ffffff; }
-        .ambassador-badge.bronze { color: #cd7f32; border-color: #cd7f32; box-shadow-color: #cd7f32; }
-        .ambassador-badge.silver { color: #c0c0c0; border-color: #c0c0c0; box-shadow-color: #c0c0c0; }
-        .ambassador-badge.gold { color: #ffd700; border-color: #ffd700; box-shadow-color: #ffd700; }
-        .ambassador-badge.team { color: #e5e4e2; border-color: #e5e4e2; box-shadow-color: #e5e4e2; }
-
-        .header-controls-row {
-            width: 100%;
-            padding: 0.2rem 1rem 0.6rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            pointer-events: auto;
-        }
-        .left-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-        }
-        .right-controls {
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-        }
-        .menu-btn, .updates-btn {
-            background: rgba(255,255,255,0.06);
-            border-radius: 40px;
-            padding: 0.5rem 0.7rem;
-            border: 1px solid #ff5555;
-            color: #ffaaaa;
-            font-size: 1.2rem;
-            cursor: pointer;
-            position: relative;
-        }
-        .updates-btn { font-size: 1.1rem; }
-        .badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: #ff3333;
-            color: white;
-            border-radius: 50%;
-            width: 18px;
-            height: 18px;
-            font-size: 0.65rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-        }
-        .wallet-display {
-            background: rgba(0,0,0,0.7);
-            border-radius: 40px;
-            padding: 0.4rem 0.8rem;
-            border: 1px solid #ff5555;
-            color: #ffcccc;
-            font-size: 0.85rem;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-        .music-control {
-            background: rgba(0,0,0,0.7);
-            border-radius: 50px;
-            padding: 0.4rem 0.8rem;
-            border: 1px solid #ff5555;
-            color: #ffaaaa;
-            font-size: 0.85rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-
-        /* Adjust screen top padding to clear the two‑row header */
-        .screen { padding-top: 102px; padding-bottom: 80px; }
-
-        /* Side menu & overlays */
-        .side-menu { position: fixed; top: 0; left: -280px; width: 280px; height: 100%; background: rgba(10,10,20,0.95); backdrop-filter: blur(16px); z-index: 200; transition: left 0.3s; border-right: 2px solid #ff5555; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
-        .side-menu.open { left: 0; }
-        .menu-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 150; visibility: hidden; opacity: 0; transition: 0.2s; }
-        .menu-overlay.active { visibility: visible; opacity: 1; }
-        .menu-item { background: rgba(30,30,50,0.8); border: 1px solid #ff5555; border-radius: 40px; padding: 0.8rem 1rem; color: #ffcccc; font-weight: 600; cursor: pointer; text-align: center; }
-        .chart-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; }
-        .chart-label { width: 70px; text-align: left; color: #ffcccc; }
-        .chart-bar-container { flex: 1; background: #1a1a2a; border-radius: 12px; overflow: hidden; height: 28px; }
-        .chart-bar { height: 100%; background: linear-gradient(90deg, #ff5555, #ff0000); width: 0%; border-radius: 12px; transition: width 0.3s ease; }
-        .chart-value { width: 60px; text-align: right; color: #ff8888; font-weight: bold; }
-        .halving-note { font-size: 0.7rem; text-align: center; margin-top: 1rem; color: #ffaaaa; }
-        @keyframes sparkleGlowRed { 0% { box-shadow: 0 0 5px #ff4444; } 50% { box-shadow: 0 0 14px #ff2a2a; } 100% { box-shadow: 0 0 8px #ff5555; } }
-        @keyframes rotateLogo { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .blockchain-modal { position: relative; width: 160px; height: 160px; margin: 1rem auto; background: rgba(0,0,0,0.6); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px solid rgba(255,50,50,0.8); box-shadow: 0 0 20px #ff3333; animation: sparkleGlowRed 1.5s infinite alternate; cursor: pointer; }
-        .stake-logo { display: flex; gap: 0.5rem; font-size: 2.5rem; animation: rotateLogo 6s linear infinite; }
-        .modal-timer-text { font-size: 1.4rem; font-weight: bold; color: #ffaaaa; background: rgba(0,0,0,0.5); padding: 0.2rem 0.6rem; border-radius: 40px; margin-top: 0.2rem; }
-        .task-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(12px); display: flex; justify-content: space-around; padding: 0.8rem 1rem; border-top: 1px solid #ff5555; z-index: 100; }
-        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 0.2rem; color: #ffcccc; font-size: 0.7rem; cursor: pointer; padding: 0.3rem 1rem; border-radius: 40px; }
-        .nav-item i { font-size: 1.4rem; }
-        .nav-item.active, .nav-item:hover { background: #ff3333; color: black; box-shadow: 0 0 10px #ff5555; }
-        .mining-dashboard { text-align: center; width: 100%; max-width: 480px; margin: 0 auto 4rem auto; }
-        .mode-toggle { display: flex; justify-content: center; gap: 0.8rem; margin: 0.5rem 0 1rem; }
-        .mode-btn { background: rgba(30,30,50,0.8); border: 1px solid #ff5555; padding: 0.5rem 1.2rem; border-radius: 40px; color: #ffcccc; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
-        .mode-btn.active { background: #ff3333; color: black; box-shadow: 0 0 12px #ff5555; }
-        .role-header { margin: 0.5rem 0; }
-        .role-header h1 { font-size: 1.8rem; background: linear-gradient(135deg,#FFFFFF,#ff8888); -webkit-background-clip: text; background-clip: text; color: transparent; }
-        .mining-rate { font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #ff8888, #ff2222); -webkit-background-clip: text; background-clip: text; color: transparent; margin: 0.5rem 0; }
-        .action-buttons { display: flex; justify-content: center; gap: 1rem; margin: 0.5rem auto 1rem; flex-wrap: wrap; }
-        .action-btn { background: linear-gradient(95deg, #ff3333, #990000); border: none; padding: 0.6rem 1.2rem; border-radius: 50px; color: white; font-weight: bold; cursor: pointer; min-width: 120px; }
-        .slideshow-container { background: rgba(5,10,22,0.8); border-radius: 1.5rem; padding: 0.8rem; margin: 0.5rem 0 1rem; border: 1px solid #ff5555; overflow: hidden; min-height: 120px; }
-        .slideshow-wrapper { display: flex; transition: transform 0.5s; }
-        .slideshow-slide { flex: 0 0 100%; padding: 0.8rem; text-align: center; }
-        .slideshow-title { font-size: 1.2rem; font-weight: bold; color: #ffaaaa; margin-bottom: 0.5rem; }
-        .slideshow-text { color: #ffcccc; font-size: 0.85rem; }
-        .slideshow-timer { text-align: center; font-size: 0.7rem; color: #ff8888; margin-top: 0.3rem; }
-        .stats { background: rgba(0,0,0,0.6); border-radius: 40px; padding: 0.6rem; margin-top: 0.8rem; display: flex; justify-content: space-between; color: #ffcccc; }
-        .ecosystem-grid { display: flex; flex-direction: column; gap: 1.2rem; max-width: 400px; margin: 1rem auto; }
-        .info-card { background: rgba(5,10,22,0.9); border-radius: 2rem; padding: 1rem; border: 2px solid rgba(255,50,50,0.7); cursor: pointer; color: #ffcccc; }
-        .info-card:hover { transform: translateY(-4px); box-shadow: 0 0 12px #ff5555; }
-        .info-card .eco-logo { font-size: 2.5rem; margin-bottom: 0.5rem; color: #ff6666; filter: drop-shadow(0 0 4px #ff3333); }
-        .info-card .eco-title { font-size: 1.3rem; font-weight: bold; color: white; }
-        .info-card .eco-desc { color: #ffcccc; font-size: 0.75rem; }
-        .back-btn { background: linear-gradient(95deg, #ff3333, #990000); border: none; padding: 0.6rem 1.2rem; border-radius: 50px; color: white; font-weight: bold; cursor: pointer; margin-top: 1rem; }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 2000; visibility: hidden; opacity: 0; transition: 0.2s; }
-        .modal-overlay.active { visibility: visible; opacity: 1; }
-        .close-modal { background: #333; margin-top: 1rem; padding: 0.5rem; width: 100%; border-radius: 40px; color: white; border: none; cursor: pointer; }
-        .profile-form { max-width: 400px; margin: 1rem auto; }
-        .profile-field { margin: 1rem 0; text-align: left; }
-        .profile-field label { display: block; color: #ffaaaa; margin-bottom: 0.3rem; }
-        .profile-field input { width: 100%; padding: 0.6rem; border-radius: 2rem; border: 1px solid #ff5555; background: rgba(0,0,0,0.6); color: white; }
-        .static-value { background: rgba(0,0,0,0.5); padding: 0.6rem; border-radius: 2rem; color: #ffcccc; word-break: break-all; position: relative; }
-        .blurred { filter: blur(6px); cursor: pointer; }
-        .clear { filter: none; }
-        .eye-toggle, .copy-id-btn { background: transparent; border: none; color: #ffaaaa; cursor: pointer; font-size: 1.2rem; margin-left: 0.5rem; }
-        .id-display-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
-        .training-attributes { max-width: 500px; margin: 1rem auto; }
-        .attribute-row { display: flex; align-items: center; justify-content: space-between; margin: 0.8rem 0; background: rgba(5,10,22,0.7); border-radius: 2rem; padding: 0.5rem 1rem; color: white; }
-        .attribute-name { width: 110px; font-weight: bold; color: #ffaaaa; }
-        .bar-container { flex: 1; height: 20px; background: #331111; border-radius: 20px; overflow: hidden; margin: 0 0.5rem; }
-        .bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff5555, #ff0000); border-radius: 20px; transition: width 0.2s; }
-        .attribute-value { width: 50px; text-align: center; color: #ffcccc; }
-        .upgrade-btn { background: #ff3333; border: none; padding: 0.2rem 0.8rem; border-radius: 30px; color: white; font-weight: bold; cursor: pointer; }
-        .whitepaper-content { color: #ffcccc; background: rgba(5,10,22,0.7); border-radius: 2rem; padding: 2rem; border: 1px solid rgba(255,50,50,0.4); font-size: 0.95rem; line-height: 1.6; }
-        .referral-link { background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 40px; margin: 1rem 0; word-break: break-all; }
-        .task-list { list-style: none; text-align: left; }
-        .task-list li { margin: 0.5rem 0; display: flex; align-items: center; gap: 0.5rem; justify-content: space-between; }
-        .task-btn { background: #ff3333; border: none; padding: 0.3rem 1rem; border-radius: 30px; color: white; font-size: 0.8rem; cursor: pointer; }
-        .task-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .player-id-display { background: rgba(0,0,0,0.5); border-radius: 40px; padding: 0.3rem 1rem; border: 1px solid #ff5555; color: #ffcccc; display: inline-block; font-family: monospace; }
-        .player-worth { background: rgba(0,0,0,0.5); border-radius: 40px; padding: 0.3rem 1rem; border: 1px solid #ff5555; color: #ffaaaa; font-weight: bold; display: inline-block; }
-        .vision-details, .virtualcard-details, .updates-details, .stake-details, .pvp-details, .tournaments-details, .legal-details { color: #ffcccc; line-height: 1.5; }
-        .section { background: rgba(5,10,22,0.7); border-radius: 1.5rem; padding: 1.2rem; margin-bottom: 1.2rem; border: 1px solid rgba(255,50,50,0.4); }
-        .referral-box { background: rgba(0,0,0,0.3); border-radius: 1rem; padding: 1rem; margin: 1rem 0; }
-        .backup-btns { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
-        .friends-list { max-height: 150px; overflow-y: auto; text-align: left; padding: 0; list-style: none; }
-        .friends-list li { padding: 0.3rem 0; border-bottom: 1px solid rgba(255,80,80,0.3); font-size: 0.85rem; }
-        .custom-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 3000; visibility: hidden; opacity: 0; transition: 0.3s; }
-        .custom-modal.active { visibility: visible; opacity: 1; }
-        .custom-modal-box { background: #0f0f1a; border-radius: 2rem; padding: 2rem 1.5rem; max-width: 420px; width: 90%; border: 2px solid #ff5555; box-shadow: 0 0 25px #ff333380; color: #ffcccc; text-align: center; animation: sparkleGlowRed 1.5s infinite alternate; }
-        .custom-modal-box input { width: 100%; padding: 0.7rem; border-radius: 30px; border: 1px solid #ff5555; background: rgba(0,0,0,0.5); color: white; margin: 0.8rem 0; }
-        .custom-modal-box button { margin: 0.5rem; }
-        .custom-modal-box textarea { width: 100%; background: #1a1a2a; border: 1px solid #ff5555; border-radius: 1rem; padding: 1rem; color: white; font-family: monospace; font-size: 0.8rem; resize: none; }
-
-        /* Inline button container for referral */
-        .referral-buttons-row {
-            display: flex;
-            gap: 0.8rem;
-            margin-top: 0.5rem;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .referral-buttons-row .action-btn {
-            min-width: unset;
-            flex: 1 1 auto;
-            padding: 0.6rem 1rem;
-            font-size: 0.9rem;
-        }
-
-        /* Boost button restyled to red */
-        .boost-btn {
-            background: linear-gradient(95deg, #ff3333, #990000);
-            border: none;
-            padding: 0.6rem 1.2rem;
-            border-radius: 50px;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-top: 0.8rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .boost-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .bonus-cooldown {
-            color: #ffaaaa;
-            font-size: 0.75rem;
-            margin-top: 0.3rem;
-        }
-
-        /* Ad modal specific */
-        .ad-modal-countdown {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #ffffff;
-            margin: 1rem 0;
-        }
-        .ad-modal-progress {
-            background: #1a1a2a;
-            border-radius: 20px;
-            height: 12px;
-            width: 100%;
-            margin: 1rem 0;
-            overflow: hidden;
-        }
-        .ad-modal-progress-bar {
-            height: 100%;
-            width: 100%;
-            background: linear-gradient(90deg, #228B22, #00ff00);
-            transition: width 1s linear;
-        }
-
-        /* Loading spinner */
-        .loader {
-            border: 4px solid rgba(255,85,85,0.2);
-            border-top: 4px solid #ff5555;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 1rem auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* APK Download Modal button */
-        .apk-download-btn {
-            background: linear-gradient(95deg, #ff3333, #990000);
-            border: none;
-            padding: 0.9rem 1.5rem;
-            border-radius: 60px;
-            font-weight: bold;
-            color: white;
-            font-size: 1.1rem;
-            text-decoration: none;
-            display: inline-block;
-            width: 100%;
-            margin: 0.8rem 0;
-            cursor: pointer;
-            box-shadow: 0 0 15px rgba(255, 50, 50, 0.5);
-        }
-
-        /* Dashboard specific */
-        .dashboard-card {
-            background: rgba(5,10,22,0.7);
-            border-radius: 2rem;
-            padding: 2rem;
-            border: 2px solid #ff5555;
-            color: white;
-            text-align: center;
-            max-width: 400px;
-            width: 100%;
-            backdrop-filter: blur(8px);
-        }
-        .dashboard-stat {
-            font-size: 1.2rem;
-            margin: 1rem 0;
-        }
-        .dashboard-big {
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: #ffaaaa;
-        }
-
-        @media (max-width: 480px) {
-            .blockchain-modal { width: 130px; height: 130px; }
-            .mining-rate { font-size: 1.5rem; }
-            .app-title { font-size: 1.8rem; }
-        }
-    </style>
-</head>
-<body>
-<!-- Auth Screen -->
-<div id="authScreen" class="screen">
-    <div class="auth-card">
-        <div class="auth-logo"><i class="fas fa-futbol"></i></div>
-        <div class="auth-title">METAFOOT</div>
-        <div class="auth-sub">Enter your Account ID to login</div>
-        <div id="loginForm" class="auth-form">
-            <div class="auth-input-group"><i class="fas fa-id-badge"></i><input type="text" id="loginAccountId" placeholder="Your 12‑char Account ID"></div>
-            <div class="error-message" id="loginError"></div>
-            <button class="auth-btn" id="loginBtn">Login</button>
-            <div class="auth-links" style="justify-content: center;">
-                <span class="auth-link" id="showCreateWallet">Create New Wallet</span>
-            </div>
-            <div class="auth-links">
-                <span class="auth-link" id="showRestoreBackupLink">Restore from Backup</span>
-                <span class="auth-link" id="showSeedRestoreLink">Recover with Seedphrase</span>
-            </div>
-        </div>
-        <div id="createForm" class="auth-form" style="display:none;">
-            <p style="text-align:center;color:#ffcccc;">A new wallet will be created. Your seedphrase will be shown <strong>once</strong>. Save it safely.</p>
-            <button class="auth-btn" id="createWalletBtn">Create Wallet</button>
-            <div class="auth-links"><span class="auth-link" id="showLoginFromCreate">Back to Login</span></div>
-        </div>
-        <div id="restoreBackupForm" class="auth-form" style="display:none;">
-            <div class="auth-input-group"><i class="fas fa-clipboard"></i><textarea rows="3" id="backupText" placeholder="Paste your backup text here"></textarea></div>
-            <div class="error-message" id="backupError"></div>
-            <button class="auth-btn" id="restoreBackupBtn">Restore from Backup</button>
-            <div class="auth-links"><span class="auth-link" id="showLoginFromBackup">Back to Login</span></div>
-        </div>
-        <div id="restoreSeedForm" class="auth-form" style="display:none;">
-            <div class="auth-input-group"><i class="fas fa-key"></i><textarea rows="2" id="seedRestoreInput" placeholder="Enter 12-word seedphrase"></textarea></div>
-            <button class="auth-btn" id="restoreSeedBtn">Restore with Seedphrase</button>
-            <div class="auth-links"><span class="auth-link" id="showLoginFromSeed">Back to Login</span></div>
-        </div>
-    </div>
-</div>
-
-<!-- Main App Container -->
-<div id="appContainer" style="display:none;">
-    <!-- ===== Stacked Header ===== -->
-    <div class="top-bar">
-        <div class="header-title-row">
-            <div class="app-title">METAFOOT</div>
-            <div class="ambassador-badge" id="ambassadorBadge" style="display:none;" title="Ambassador">
-                <i class="fas fa-check"></i>
-            </div>
-        </div>
-        <div class="header-controls-row">
-            <div class="left-controls">
-                <div class="menu-btn" id="menuBtn"><i class="fas fa-bars"></i></div>
-            </div>
-            <div class="right-controls">
-                <div class="updates-btn" id="updatesBtn">
-                    <i class="fas fa-bell"></i>
-                    <span id="updatesBadge" class="badge" style="display:none;">0</span>
-                </div>
-                <div class="wallet-display"><i class="fas fa-wallet"></i> <span id="walletBalance">0</span> $FOOT</div>
-                <div id="musicControl" class="music-control"><i id="musicIcon" class="fas fa-music"></i> <span id="musicText">Play Music</span></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Side Menu -->
-    <div id="sideMenu" class="side-menu">
-        <div class="menu-item" data-action="profile"><i class="fas fa-user"></i> Profile</div>
-        <div class="menu-item" data-action="airdropDashboard"><i class="fas fa-chart-pie"></i> Airdrop Dashboard</div>
-        <div class="menu-item" data-action="whitepaper"><i class="fas fa-file-alt"></i> Whitepaper</div>
-        <div class="menu-item" data-action="halving"><i class="fas fa-chart-line"></i> Halving</div>
-        <div class="menu-item" data-action="legal"><i class="fas fa-gavel"></i> Legal</div>
-        <div class="menu-item" data-action="lock"><i class="fas fa-lock"></i> Lock</div>
-    </div>
-    <div id="menuOverlay" class="menu-overlay"></div>
-
-    <!-- Bottom Navigation -->
-    <div class="task-nav">
-        <div class="nav-item" id="navHome"><i class="fas fa-home"></i><span>Home</span></div>
-        <div class="nav-item" id="navReferral"><i class="fas fa-link"></i><span>Referral</span></div>
-        <div class="nav-item" id="navTask"><i class="fas fa-tasks"></i><span>Task</span></div>
-        <div class="nav-item" id="navEcosystem"><i class="fas fa-globe"></i><span>Ecosystem</span></div>
-        <div class="nav-item" id="navGamesApps"><i class="fas fa-gamepad"></i><span>Games & Apps</span></div>
-    </div>
-
-    <!-- All Screens -->
-    <div id="miningScreen" class="screen">
-        <div class="mining-dashboard">
-            <div class="mode-toggle">
-                <div class="mode-btn" id="switchToPlayerBtn"><i class="fas fa-user"></i> Player Mode</div>
-                <div class="mode-btn" id="switchToManagerBtn"><i class="fas fa-users"></i> Manager Mode</div>
-            </div>
-            <div id="roleHeader" class="role-header">
-                <div class="role-badge" style="background:#ff333320;display:inline-block;padding:0.2rem 1rem;border-radius:40px;">⚡ Player Mode</div>
-                <h1><i class="fas fa-futbol"></i> Player Mining</h1>
-            </div>
-            <div class="blockchain-modal" id="claimCircleBtn">
-                <div class="stake-logo"><i class="fas fa-link"></i><i class="fas fa-cube"></i></div>
-                <div class="modal-timer-text" id="timerText">Ready!</div>
-            </div>
-            <div class="mining-rate" id="miningRateDisplay">4 $FOOT / day</div>
-            <div id="actionButtonsContainer" class="action-buttons"></div>
-            <!-- Boost button -->
-            <button id="boostBtn" class="boost-btn" disabled>⚡ Boost</button>
-            <div id="bonusCooldownText" class="bonus-cooldown"></div>
-            <!-- Test ad unit placeholder -->
-            <div style="margin: 1rem auto; max-width: 480px;">
-                <ins class="adsbygoogle"
-                     style="display:block"
-                     data-ad-client="ca-pub-3940256099942544"
-                     data-ad-slot="6303424663"
-                     data-ad-format="auto"
-                     data-full-width-responsive="true"></ins>
-                <script>
-                     (adsbygoogle = window.adsbygoogle || []).push({});
-                </script>
-            </div>
-            <div class="slideshow-container" id="slideshowContainer">
-                <div class="slideshow-wrapper" id="slideshowWrapper"></div>
-                <div class="slideshow-timer" id="slideshowTimer">Next slide in 40s</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Referral Screen -->
-    <div id="referralScreen" class="screen hidden">
-        <div class="info-screen">
-            <div class="info-card" style="cursor:default;max-width:500px;margin:0 auto;">
-                <div class="info-title"><i class="fas fa-link"></i> Retroactive Referrals</div>
-                <div class="info-content">
-                    <p><strong>Your Referral Code</strong><br>
-                    <span style="font-family:monospace;font-size:1.2rem;" id="refCodeDisplay" class="blurred copyable-text">—</span></p>
-                    <div class="id-display-row">
-                        <button id="revealRefCodeBtn" class="eye-toggle"><i class="fas fa-eye"></i></button>
-                        <button id="copyRefCodeBtn" class="copy-id-btn"><i class="fas fa-copy"></i> Copy</button>
-                    </div>
-                    <div class="referral-box">
-                        <p><strong>Connect with a Friend</strong><br>Enter their referral code below to earn <span style="color:#ffaaaa;">2 $FOOT</span> instantly.</p>
-                        <div class="auth-input-group" style="margin-top:0.5rem;"><i class="fas fa-user-plus"></i><input type="text" id="friendCodeInput" placeholder="e.g., 7a3f9b2c4d1e" maxlength="12"></div>
-                        <div class="referral-buttons-row">
-                            <button id="submitReferralBtn" class="action-btn">Connect & Earn</button>
-                            <button id="copyInviteLinkBtn" class="action-btn">📋 Copy Invite Link</button>
-                        </div>
-                        <div class="error-message" id="referralError"></div>
-                    </div>
-                    <div class="referral-box">
-                        <p><strong>Your Referral Rewards</strong><br><span style="font-size:1.5rem;font-weight:bold;color:#ffaaaa;" id="pendingReferralAmount">0</span> $FOOT earned<br><small>This amount comes from successful referrals and is added to your balance instantly.</small></p>
-                        <p><strong>Friends Connected:</strong> <span id="referralCount">0</span></p>
-                        <div class="friends-list" id="friendsListContainer"></div>
-                    </div>
-                    <p style="font-size:0.8rem;color:#ffaaaa;">✨ Both receive 2 $FOOT (halved as miners grow).</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tasks Screen -->
-    <div id="taskScreen" class="screen hidden">
-        <div class="info-screen">
-            <div class="info-card" style="cursor:default;">
-                <div class="info-title"><i class="fas fa-tasks"></i> Daily Social Tasks</div>
-                <div class="info-content"><ul class="task-list" id="dailyTasksList"></ul><p style="margin-top:1rem;font-size:0.8rem;color:#ffaaaa;">⏱️ Cooldown: 30 minutes between claims</p></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Ecosystem Screen -->
-    <div id="ecosystemScreen" class="screen hidden">
-        <div style="text-align:center;max-width:500px;margin:0 auto;">
-            <h2 style="font-size:2rem;background:linear-gradient(135deg,#ff8888,#ff2222);-webkit-background-clip:text;background-clip:text;color:transparent;"><i class="fas fa-globe"></i> METAFOOT Ecosystem</h2>
-            <div class="ecosystem-grid">
-                <div class="info-card" data-screen="tournaments"><div class="eco-logo"><i class="fas fa-trophy"></i></div><div class="eco-title">Managers Tournaments</div><div class="eco-desc">Compete in weekly leagues · Win $FOOT & NFTs</div></div>
-                <div class="info-card" data-screen="pvp"><div class="eco-logo"><i class="fas fa-gamepad"></i></div><div class="eco-title">PvP Arena</div><div class="eco-desc">Challenge other players · Real‑time matches · Earn rewards</div></div>
-                <div class="info-card" data-screen="stake"><div class="eco-logo"><i class="fas fa-link"></i> <i class="fas fa-cube"></i></div><div class="eco-title">Stake $FOOT</div><div class="eco-desc">Lock tokens · Earn passive yield · Secure the network</div></div>
-                <div class="info-card" data-screen="virtualCard"><div class="eco-logo"><i class="fas fa-credit-card"></i></div><div class="eco-title">$FOOT Virtual Card</div><div class="eco-desc">Spend your mined $FOOT anywhere · Real‑world utility</div></div>
-                <div class="info-card" id="visionCard"><div class="eco-logo"><i class="fas fa-chalkboard-user"></i></div><div class="eco-title">What METAFOOT is building</div><div class="eco-desc">Our mission, roadmap, and vision</div></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Games & Apps screen (placeholder) -->
-    <div id="gamesAppsScreen" class="screen hidden">
-        <div style="text-align:center;max-width:500px;margin:0 auto;color:#ffffff;">
-            <h1><i class="fas fa-gamepad"></i> Games & Apps</h1>
-            <p style="margin:2rem;">Coming soon. Stay tuned for the METAFOOT game and partner apps.</p>
-            <button class="back-btn" id="backFromGamesAppsBtn">Back to Home</button>
-        </div>
-    </div>
-
-    <!-- Airdrop Dashboard Screen -->
-    <div id="airdropDashboardScreen" class="screen hidden">
-        <div style="width:100%;max-width:500px;margin:0 auto;">
-            <div class="dashboard-card">
-                <h2 style="color:#ffaaaa;"><i class="fas fa-chart-pie"></i> Airdrop Dashboard</h2>
-                <div class="dashboard-stat">Total Pool: <span class="dashboard-big">300,000,000</span> $FOOT</div>
-                <div class="dashboard-stat">Mined: <span class="dashboard-big" id="dashboardMined">0</span> $FOOT</div>
-                <div class="dashboard-stat" style="font-size:0.9rem;color:#ff8888;" id="dashboardPercent">(0.00% distributed)</div>
-                <button class="back-btn" id="backFromDashboardBtn">Back to Home</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Halving screen -->
-    <div id="halvingScreen" class="screen hidden">
-        <div style="width:100%;max-width:600px;margin:0 auto; text-align:center;">
-            <h1 style="color:#ffaaaa;">📉 HALVING MECHANISM</h1>
-            <div id="halvingChartContainer"></div>
-            <div class="halving-note">• Reward halves when miners reach thresholds<br>• Current rate depends on total active miners</div>
-            <button class="back-btn" id="backFromHalvingBtn">Back to Home</button>
-        </div>
-    </div>
-
-    <!-- Stake screen (ecosystem sub‑screen) -->
-    <div id="stakeScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <div class="stake-details">
-                <h1 style="font-size:2rem;text-align:center;color:#ffaaaa;">🔒 Stake $FOOT</h1>
-                <p style="text-align:center;margin:1rem 0;"><em>Lock Your Tokens. Earn While You Sleep.</em></p>
-                <div class="section"><div class="stake-title">What's on the roadmap</div><p>Staking will be the simplest way to grow your $FOOT balance without lifting a finger. Soon, you'll be able to lock your tokens for a fixed period and watch them generate passive rewards automatically.</p><ul style="margin-left:1.5rem;"><li><strong>Passive Yield</strong> – Earn up to 15% APY, paid directly in $FOOT. Your balance will grow while you focus on training your player or managing your team.</li><li><strong>Secure the Ecosystem</strong> – Staked tokens will help validate transactions and keep the METAFOOT economy running smoothly. You'll become a pillar of the network.</li><li><strong>Flexible Terms</strong> – Choose a lock‑up period that fits your strategy. Longer commitments will offer higher rates.</li></ul></div>
-                <div class="section"><div class="stake-title">Introducing Round‑Robin Staking Pools (also in development)</div><p>Want something different? You'll be able to form a group with friends or fellow miners, pool your $FOOT, and take turns receiving the full reward. It's fair, predictable, and a great way to build community. (Full details in the whitepaper.)</p></div>
-                <div class="section"><div class="stake-title">When can you start?</div><p>Staking will launch shortly after the METAFOOT game goes live. Keep mining, keep training, and get ready to put your $FOOT to work.</p><p><em>The best time to stake will be the moment it opens. Be ready.</em></p></div>
-                <div class="page-button-row"><button class="back-btn" id="backFromStakeToEcoBtn"><i class="fas fa-arrow-left"></i> Back to Ecosystem</button><button class="action-btn" id="stakeBackHomeBtn">🏠 Back to Home</button></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- PvP screen (ecosystem sub‑screen) -->
-    <div id="pvpScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <div class="pvp-details">
-                <h1 style="font-size:2rem;text-align:center;color:#ffaaaa;">🎮 PvP Arena</h1>
-                <p style="text-align:center;margin:1rem 0;"><em>Face Off. Win $FOOT. Claim Glory. — In Development</em></p>
-                <div class="section"><div class="pvp-title">How it will work</div><p>The PvP Arena will be where individual skill and strategy collide. You'll challenge other players to real‑time matches and prove who has the better team—and the sharper mind.</p><ul style="margin-left:1.5rem;"><li><strong>Challenge Any Manager</strong> – Find an opponent in the Arena lobby and send a match request. Both players will wager a small entry fee in $FOOT.</li><li><strong>Live Match Simulation</strong> – Watch the action unfold as your players' trained attributes (Speed, Shoot, Power, etc.) determine the outcome.</li><li><strong>Winner Takes the Pot</strong> – The victor will claim the combined entry fees, minus a tiny network fee that fuels the buyback‑and‑burn mechanism.</li></ul></div>
-                <div class="section"><div class="pvp-title">Why you'll want in on day one</div><ul style="margin-left:1.5rem;"><li><strong>Earn on Your Terms</strong> – You'll decide when to play and how much to risk. No waiting for tournaments.</li><li><strong>Test Your Training</strong> – See the direct impact of your player upgrades. Every point will matter.</li><li><strong>Build Your Reputation</strong> – Climb the seasonal leaderboard and earn exclusive profile badges.</li></ul></div>
-                <div class="section"><div class="pvp-title">The countdown has begun</div><p>The Arena opens when the METAFOOT game launches. Train your player now so you're ready to dominate from the first match.</p><p><em>The Arena isn't ready yet—but your opponent is already training. Don't be left behind.</em></p></div>
-                <div class="page-button-row"><button class="back-btn" id="backFromPvpToEcoBtn"><i class="fas fa-arrow-left"></i> Back to Ecosystem</button><button class="action-btn" id="pvpBackHomeBtn">🏠 Back to Home</button></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tournaments screen (ecosystem sub‑screen) -->
-    <div id="tournamentsScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <div class="tournaments-details">
-                <h1 style="font-size:2rem;text-align:center;color:#ffaaaa;">🏆 Managers Tournaments</h1>
-                <p style="text-align:center;margin:1rem 0;"><em>Build Your Dynasty. Compete for Massive Prizes. — On the Horizon</em></p>
-                <div class="section"><div class="tournaments-title">The League Structure (Coming Soon)</div><p>Tournaments will be the pinnacle of METAFOOT competition. As a manager, you'll assemble a squad of the best player avatars, enter weekly leagues, and battle for glory—and a share of huge $FOOT prize pools.</p><ul style="margin-left:1.5rem;"><li><strong>$FOOT Survival</strong> – The entry point. Only the top 3 managers will advance to the next league.</li><li><strong>$FOOT Mission League</strong> – The Premier League equivalent. Tougher opponents, bigger rewards.</li><li><strong>$FOOT Classic League</strong> – Europa League vibes. A proving ground for rising stars.</li><li><strong>$FOOT Elite League</strong> – The Champions League. The ultimate test. The ultimate prize.</li></ul></div>
-                <div class="section"><div class="tournaments-title">How you'll earn</div><ul style="margin-left:1.5rem;"><li><strong>Prize Splits Are Fair</strong> – 70% of the tournament prize will go to the players signed to the winning team (shared equally). 30% will go to the manager who led them to victory.</li><li><strong>Scout and Sign Wisely</strong> – The better your players, the higher your chances. Train your own avatar or buy proven talent on the marketplace.</li><li><strong>Rent Out Your Team</strong> – If you can't play a tournament, you'll be able to rent your team to another manager and collect a fee. Earn even when you're away.</li></ul></div>
-                <div class="section"><div class="tournaments-title">Seasonal Rewards</div><p>Each league season will offer unique trophies, exclusive NFTs, and substantial $FOOT bonuses for top performers.</p><p><strong>What you can do now:</strong> Start training your player and stacking $FOOT. The moment tournaments open, managers with deep rosters and sharp strategies will have the advantage.</p><p><em>Tournaments are the heartbeat of METAFOOT. Build your team today—the first season is coming.</em></p></div>
-                <div class="page-button-row"><button class="back-btn" id="backFromTournamentsToEcoBtn"><i class="fas fa-arrow-left"></i> Back to Ecosystem</button><button class="action-btn" id="tournamentsBackHomeBtn">🏠 Back to Home</button></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Vision Details screen -->
-    <div id="visionDetailsScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <div class="vision-details">
-                <h1 style="font-size:2rem;text-align:center;color:#ffaaaa;">🚀 What METAFOOT is building – a football universe where everyone can earn</h1>
-                <p style="text-align:center;margin:1rem 0;">You’re mining $FOOT today. But tomorrow, you’ll use it to be part of something much bigger.<br>Here’s what’s coming – and why you should be excited.</p>
-                <div class="section"><div class="vision-title">1. 🏠 Rental system – earn even when you’re not playing</div><p>· Own a team? Rent it out to another player for a fee in $FOOT. You keep the fee – that’s your passive income.<br>· The renter now controls your team. They can enter PvP matches and tournaments.<br>· When the renter wins prize money: It’s split 50/50 between the renter and the team’s players (the avatars signed to that team). The team owner already got paid – no extra split.</p><p><strong>Why miners will love this:</strong><br>· Team owners earn without playing.<br>· Renters can play and earn without owning a team.<br>· Players (avatars) – that’s you – earn a share of every win, even if the team is rented.</p></div>
-                <div class="section"><div class="vision-title">2. 🧠 Train player – you are the player</div><p>Every time you train your avatar (speed, shot, power, intelligence), you’re building your digital football self.<br>The stronger you become, the more managers will want to sign you to their team.<br><br>Think of it as your career in the metaverse.</p></div>
-                <div class="section"><div class="vision-title">3. 💰 How you earn – fair for everyone</div><p>In real football, players sign contracts and get paid when the team wins. Same here.<br>· When a manager wins a tournament: 70% of the prize goes to all the players signed to that team (shared equally). 30% goes to the manager.<br>· Example: A manager wins 1,000,000 $FOOT. The team players share 700,000 $FOOT. You get your cut. The manager keeps 300,000.<br>· In a PvP match (rented team): The renter and the team players split winnings 50/50. The team owner already received their rental fee – no extra split.<br><br>All rules are enforced by smart contracts – no cheating.<br><strong>Why this is huge:</strong> You earn passively just by being signed to a winning team. The more you train, the more valuable you become.</p></div>
-                <div class="section"><div class="vision-title">4. 🔁 Buy and sell player – only managers, like real football</div><p>If you choose Manager Mode, you can buy and sell player avatars on the market. You might make a profit or a loss – just like real football transfers. This creates a living economy inside the game.</p></div>
-                <div class="section"><div class="vision-title">5. 🏆 Tournaments – where glory and prizes wait</div><p>Managers enter tournaments, play matches, and win trophies and $FOOT prizes. The better your team (and the players you sign), the more you can win.</p></div>
-                <div class="section"><div class="vision-title">6. 🎯 $FOOT tournament system – climb the ladder</div><p>We’re building four leagues so you always have a goal:<br>· $FOOT SURVIVAL – the entry level. Only top 3 advance.<br>· $FOOT MISSION LEAGUE – like the Premier League.<br>· $FOOT CLASSIC LEAGUE – like the Europa League.<br>· $FOOT ELITE LEAGUE – the Champions League. The ultimate prize.<br><br>Start from the bottom, climb to the top. Every season brings new rewards.</p></div>
-                <div class="section"><div class="vision-title">7. 🧠 $FOOT knowledge challenge – prove you’re a true fan</div><p>We’ll run quiz challenges based on what happens in our leagues. If you pay attention, you can earn extra $FOOT just by answering questions. This rewards smart players, not just grinders.</p></div>
-                <div class="section"><div class="vision-title">8. 💳 $FOOT Virtual Card – spend your tokens in the real world</div><p>We’re building a virtual debit card that you can top up with $FOOT. In the future, you’ll be able to spend your mined tokens anywhere – coffee, groceries, online shopping. Miners, imagine mining your daily spending money.</p></div>
-                <div class="section"><div class="vision-title">9. ⚽ $FOOT Football Academy – real impact, real revenue</div><p>We’re not just digital. We’ll find real‑life underground football talent and train them for free. When a professional club signs one of our players, we take a cut – that’s our revenue. Part of that revenue goes back into the ecosystem, increasing the value of $FOOT. You’re helping discover future stars while you mine.</p></div>
-                <div class="section"><div class="vision-title">10. 🎮 METAFOOT – the game itself</div><p>METAFOOT is the name of our football manager game. $FOOT is the currency that powers everything. We’re building a realistic, immersive manager game – first on mobile (Unity), later on PC (Unreal Engine). It will be unlike anything you’ve played before.</p></div>
-                <div class="section"><div class="vision-title">🔥 What this means for you, the miner</div><p>You’re not just clicking a button to claim tokens. You’re becoming a founding member of a football metaverse that will have:<br>· Real earning potential – passive and active.<br>· A fair, transparent economy – smart contracts, no cheating.<br>· Real‑world utility – virtual card, real‑life academy.<br>· A game that will evolve and grow for years – mobile first, then PC.<br><br>The mining phase is your head start. Train your avatar now. Stack your $FOOT. When the full ecosystem launches, you’ll be ready to play, earn, and dominate.<br><br>The best is yet to come. And you’re already part of it.</p></div>
-                <button class="back-btn" id="backFromVisionBtn"><i class="fas fa-arrow-left"></i> Back to Ecosystem</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Virtual Card screen -->
-    <div id="virtualCardScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <div class="virtualcard-details">
-                <h1 style="font-size:2rem;text-align:center;color:#ffaaaa;">💳 $FOOT Virtual Card</h1>
-                <p style="text-align:center;margin:1rem 0;"><em>Coming soon: The only card that lives entirely inside the METAFOOT universe – and eventually, in METAFOOT physical stores.</em></p>
-                <div class="section"><div class="card-title">🔮 What to expect</div><p>We’re designing a virtual debit card that will live right inside the METAFOOT app. No third‑party payment networks. No external retail partners. Just your $FOOT balance, ready to be spent wherever you go – first online, then in our own branded physical locations.</p></div>
-                <div class="section"><div class="card-title">🏬 The vision: METAFOOT Physical Shops</div><p>Imagine walking into a METAFOOT store, scanning your virtual card, and walking out with gear, merchandise, event tickets, or even a coffee. No currency conversion. No middleman. Just pure $FOOT utility. We’re building these spaces so you can experience the ecosystem in real life.</p></div>
-                <div class="section"><div class="card-title">⚡ Why this will change everything</div><ul style="margin-left:1.5rem;"><li><strong>Zero dependency</strong> – We won’t need Visa, Mastercard, or any external partner. The shops are ours. The card is ours. The experience will be seamless.</li><li><strong>Ecosystem‑first design</strong> – Every transaction will settle within the METAFOOT network. Your $FOOT stays inside the economy, fueling growth.</li><li><strong>Future‑proof</strong> – As METAFOOT expands, the card expands with it. More shops. More services. More reasons to hold and use $FOOT.</li></ul></div>
-                <div class="section"><div class="card-title">📅 What you'll be able to do</div><ul style="margin-left:1.5rem;"><li><strong>Day one:</strong> Use the virtual card details to pay for digital goods, subscriptions, or any online service that accepts standard card numbers.</li><li><strong>Phase two:</strong> Walk into a METAFOOT store, tap your phone, and the payment is done. Your mined $FOOT becomes a ticket to the match, a jersey on your back, or a drink in your hand.</li></ul></div>
-                <div class="section"><div class="card-title">🔑 Why early miners should be excited</div><p>The shops are on the roadmap. The card is in development. When we open our first location, you'll already have the card in your app – and the $FOOT in your wallet. No waiting. No sign‑up. Just walk in and spend like you own the place.</p><p><em>Because in the METAFOOT metaverse, you will.</em></p></div>
-                <button class="back-btn" id="backFromVirtualCardBtn"><i class="fas fa-arrow-left"></i> Back to Ecosystem</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Dynamic Updates Screen -->
-    <div id="updatesScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <h1 style="color:#ffaaaa;">🔔 Updates & Announcements</h1>
-            <div id="dynamicUpdatesContainer"></div>
-            <button class="back-btn" id="backFromUpdatesBtn">Back to Home</button>
-        </div>
-    </div>
-
-    <!-- Legal Screen -->
-    <div id="legalScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <div class="legal-details">
-                <h1 style="color:#ffaaaa;">⚖️ Legal & Disclaimers</h1>
-                <p><em>Web3 Self‑Custody Version</em></p>
-                <div class="section"><p><strong>1. Self‑Custodial Wallet & Seedphrase Responsibility</strong><br>METAFOOT does not create or store user accounts. Access to your $FOOT and player progress is controlled exclusively by a 12‑word seedphrase generated locally in your browser. METAFOOT cannot recover, reset, or view your seedphrase. If you lose your seedphrase, your $FOOT and player data are permanently inaccessible. You are solely responsible for backing up and securing your seedphrase. Never share it with anyone, including anyone claiming to represent METAFOOT.</p></div>
-                <div class="section"><p><strong>2. $FOOT Utility Token – Not an Investment</strong><br>$FOOT is a utility token designed for use within the METAFOOT ecosystem—training players, entering tournaments, staking, renting teams, and spending via the $FOOT Virtual Card. $FOOT is not a security, investment contract, or speculative instrument. METAFOOT makes no promises regarding the future market value of $FOOT. The token's value is derived solely from ecosystem utility and demand. Nothing on this platform constitutes financial, legal, or investment advice.</p></div>
-                <div class="section"><p><strong>3. Mining Phase – Local Data Storage & Snapshot</strong><br>During the mining phase, all $FOOT balances and player attributes are stored locally in your browser under an account ID derived from your seedphrase. METAFOOT does not have access to this data. At the conclusion of the mining phase, a snapshot of eligible accounts will be taken for the purpose of distributing $FOOT tokens on the Solana blockchain. It is your responsibility to follow the official claim process using your seedphrase or exported backup file. METAFOOT is not responsible for missed claims due to user inaction.</p></div>
-                <div class="section"><p><strong>4. Blockchain & Smart Contract Risk</strong><br>$FOOT will be deployed as an SPL token on the Solana blockchain. Blockchain technology involves inherent risks including, but not limited to: smart contract bugs, network congestion, validator centralization, and potential regulatory changes. METAFOOT does not control the Solana network and cannot reverse transactions once confirmed.</p></div>
-                <div class="section"><p><strong>5. No Custody of Funds</strong><br>METAFOOT does not hold or control user funds during the mining phase. All value is represented by data stored locally in your browser. In the future Unity game, METAFOOT may operate a custodial in‑game wallet for gameplay convenience. Players may withdraw their $FOOT to a self‑custodial Solana wallet at any time, subject to standard blockchain transaction fees and withdrawal limits designed to prevent fraud.</p></div>
-                <div class="section"><p><strong>6. Regulatory Compliance</strong><br>The METAFOOT ecosystem is in active development. We are committed to complying with applicable laws and regulations in the jurisdictions where we operate. However, the legal status of blockchain‑based games and tokens varies globally. It is your responsibility to ensure your participation complies with your local laws. Residents of sanctioned jurisdictions or those prohibited from using cryptocurrency may not participate.</p></div>
-                <div class="section"><p><strong>7. No Guarantee of Value</strong><br>The value of $FOOT may fluctuate significantly and could become zero. METAFOOT makes no promises regarding future token price, market demand, or liquidity. You should only participate with time and resources you can afford to allocate.</p></div>
-                <div class="section"><p><strong>8. Intellectual Property</strong><br>All METAFOOT branding, logos, game concepts, original content, and design assets are protected by international copyright and trademark laws. You may not reproduce, distribute, or create derivative works without explicit written permission.</p></div>
-                <div class="section"><p><strong>9. Privacy & Data Collection</strong><br>METAFOOT collects minimal data required for functionality. During the mining phase, no personal data is collected by default. The optional pre‑sale waitlist collects only the email address you voluntarily provide. We never sell your personal information. Any data stored locally in your browser remains under your control.</p></div>
-                <div class="section"><p><strong>10. Age Restriction</strong><br>You must be at least the age of digital consent in your jurisdiction to participate. METAFOOT is not directed at children.</p></div>
-                <div class="section"><p><strong>11. No Gambling</strong><br>METAFOOT is a skill‑based football management game with economic elements. It is not a gambling platform. Tournament entry fees are used for prize pools and ecosystem funding, not for house profit.</p></div>
-                <div class="section"><p><strong>12. Amendments</strong><br>These legal notices may be updated periodically to reflect changes in the ecosystem or regulatory environment. Continued use of the platform constitutes acceptance of any modifications. Major changes will be announced via official METAFOOT channels.</p></div>
-                <div class="section"><p><strong>13. Contact & Official Channels</strong><br>For official announcements, join our Telegram or follow us on X (Twitter). Be cautious of impersonators. METAFOOT team members will never ask for your seedphrase, private keys, or personal funds.</p></div>
-                <button class="back-btn" id="backFromLegalBtn">Back to Home</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Whitepaper Screen -->
-    <div id="whitepaperScreen" class="screen hidden">
-        <div style="width:100%;max-width:800px;margin:0 auto;">
-            <h2 style="font-size:2rem;font-weight:800;background:linear-gradient(135deg,#ff8888,#ff2222);-webkit-background-clip:text;background-clip:text;color:transparent;text-align:center;margin-bottom:1rem;">📄 Whitepaper</h2>
-            <div class="whitepaper-content" id="whitepaperContent"></div>
-        </div>
-    </div>
-
-    <!-- Training Screen -->
-    <div id="trainingScreen" class="screen hidden">
-        <div style="width:100%;max-width:550px;margin:0 auto;">
-            <h2 style="color:#ffaaaa;">🏋️ Train Your Player</h2>
-            <div style="display:flex;justify-content:space-between;">
-                <div class="player-id-display" id="playerIdDisplay">ID: —</div>
-                <div class="player-worth" id="playerWorthDisplay">Worth: 0.0 $FOOT</div>
-            </div>
-            <div class="training-attributes" id="trainingAttributesContainer"></div>
-            <div class="training-chart-container"><div class="training-chart-title">📊 Training Cost Halving</div><div id="trainingChartInner"></div></div>
-            <div class="stats"><span>Balance: <strong id="trainingBalance">0</strong> $FOOT</span><span>Total Spent: <strong id="totalSpentDisplay">0.0</strong> $FOOT</span></div>
-            <p style="color:#ff8888;font-size:0.7rem;text-align:center;margin-top:0.5rem;">⚡ Trading disabled until game launch.</p>
-        </div>
-    </div>
-
-    <!-- Buy / Sell Player screens (placeholders) -->
-    <div id="buyPlayerScreen" class="screen hidden"><div style="text-align:center;padding:2rem;"><h2>🛒 Buy Player</h2><div class="info-card"><div class="eco-title">Transfer Market Coming Soon</div></div></div></div>
-    <div id="sellPlayerScreen" class="screen hidden"><div style="text-align:center;padding:2rem;"><h2>💰 Sell Player</h2><div class="info-card"><div class="eco-title">Transfer Market Coming Soon</div></div></div></div>
-
-    <!-- Profile Screen -->
-    <div id="profileScreen" class="screen hidden">
-        <div class="profile-form" style="max-width:400px;margin:0 auto;">
-            <h2 style="text-align:center;color:#ffaaaa;">👤 Profile</h2>
-            <div class="profile-field"><label>Username (permanent)</label><input type="text" id="profileUsername" placeholder="Enter your name"></div>
-            <div class="profile-field">
-                <label>Your Account ID</label>
-                <div class="static-value">
-                    <div class="id-display-row">
-                        <span id="profileAccountId" class="blurred copyable-text" style="font-family:monospace;">—</span>
-                        <button id="revealProfileIdBtn" class="eye-toggle"><i class="fas fa-eye"></i></button>
-                        <button id="copyProfileIdBtn" class="copy-id-btn"><i class="fas fa-copy"></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="profile-field">
-                <label>Your Referral Code</label>
-                <div class="static-value">
-                    <div class="id-display-row">
-                        <span id="profileRefCode" class="blurred copyable-text" style="font-family:monospace;">—</span>
-                        <button id="revealProfileRefBtn" class="eye-toggle"><i class="fas fa-eye"></i></button>
-                        <button id="copyProfileRefBtn" class="copy-id-btn"><i class="fas fa-copy"></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="profile-field"><label>Coin Balance</label><div class="static-value" id="profileBalance">0 $FOOT</div></div>
-            <button class="action-btn" id="saveProfileBtn" style="margin-top:1rem;">Save Username</button>
-            <div class="backup-btns">
-                <button class="action-btn" id="exportBackupBtn"><i class="fas fa-copy"></i> Copy Backup</button>
-                <button class="action-btn" id="revealSeedBtn"><i class="fas fa-eye"></i> Reveal Seedphrase</button>
-                <button class="action-btn" id="copySeedBtn"><i class="fas fa-copy"></i> Copy Seedphrase</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="customModalOverlay" class="custom-modal">
-    <div class="custom-modal-box" id="customModalBox"></div>
-</div>
-
-<!-- Ad modal overlay (simulated rewarded ad) -->
-<div id="adModalOverlay" class="modal-overlay" style="z-index:4000;">
-    <div class="halving-modal" style="text-align:center;">
-        <h3 style="color:#ffaaaa;">📺 Watch a short ad to earn 0.5 $FOOT</h3>
-        <div class="ad-modal-countdown" id="adCountdownText">10</div>
-        <div class="ad-modal-progress">
-            <div class="ad-modal-progress-bar" id="adProgressBar"></div>
-        </div>
-        <button id="adClaimBtn" class="action-btn" style="margin-top:1rem;" disabled>⏳ Please wait...</button>
-        <button id="adCloseBtn" class="close-modal" style="margin-top:0.5rem;">Close</button>
-    </div>
-</div>
-
-<!-- Loading Modal for restore -->
-<div id="loadingModalOverlay" class="custom-modal" style="z-index:4001;">
-    <div class="custom-modal-box">
-        <h3 style="color:#ffaaaa;">Restoring your wallet…</h3>
-        <div class="loader"></div>
-        <p style="color:#ffcccc; margin-top:1rem;">Fetching your data from the cloud.</p>
-    </div>
-</div>
-
-<script>
-(function(){
-    // ============ API Base URL ============
-    const API_BASE = 'https://metafoot-node.onrender.com';
-
-    // ============ UPDATES GIST URL (YOUR GIST) ============
-    const UPDATES_GIST_URL = 'https://gist.githubusercontent.com/metafooot/075d57ad3e2adc8141de2d7bf6f16d4e/raw/updates.json';
-
-    const wordlist = ['abandon','ability','able','about','above','absent','absorb','abstract','absurd','abuse','access','accident','account','accuse','achieve','acid','acoustic','acquire','across','act','action','actor','actress','actual','adapt','add','addict','address','adjust','admit','adult','advance','advice','aerobic','affair','afford','afraid','africa','after','again','age','agent','agree','ahead','aim','air','airport','aisle','alarm','album','alcohol','alert','alien','all','alley','allow','almost','alone','alpha','already','also','alter','always','amateur','amazing','among','amount','amused','analyst','anchor','ancient','anger','angle','angry','animal','ankle','announce','annual','another','answer','antenna','antique','anxiety','any','apart','apology','appear','apple','approve','april','arch','arctic','area','arena','argue','arm','armed','armor','army','around','arrange','arrest','arrive','arrow','art','artefact','artist','artwork','ask','aspect','assault','asset','assist','assume','asthma','athlete','atom','attack','attend','attitude','attract','auction','audit','august','aunt','author','auto','autumn','average','avocado','avoid','awake','aware','away','awesome','awful','awkward','axis','baby','bachelor','bacon','badge','bag','balance','balcony','ball','bamboo','banana','banner','bar','barely','bargain','barrel','base','basic','basket','battle','beach','bean','beauty','because','become','beef','before','begin','behave','behind','believe','below','belt','bench','benefit','best','betray','better','between','beyond','bicycle','bid','bike','bind','biology','bird','birth','bitter','black','blade','blame','blanket','blast','bleak','bless','blind','blood','blossom','blouse','blue','blur','blush','board','boat','body','boil','bomb','bone','bonus','book','boost','border','boring','borrow','boss','bottom','bounce','box','boy','bracket','brain','brand','brass','brave','bread','breeze','brick','bridge','brief','bright','bring','brisk','broccoli','broken','bronze','broom','brother','brown','brush','bubble','buddy','budget','buffalo','build','bulb','bulk','bullet','bundle','bunker','burden','burger','burst','bus','business','busy','butter','buyer','buzz','cabbage','cabin','cable','cactus','cage','cake','call','calm','camera','camp','can','canal','cancel','candy','cannon','canoe','canvas','canyon','capable','capital','captain','car','carbon','card','cargo','carpet','carry','cart','case','cash','casino','castle','casual','cat','catalog','catch','category','cattle','caught','cause','caution','cave','ceiling','celery','cement','census','century','cereal','certain','chair','chalk','champion','change','chaos','chapter','charge','chase','chat','cheap','check','cheese','chef','cherry','chest','chicken','chief','child','chimney','choice','choose','chronic','chuckle','chunk','churn','cigar','cinnamon','circle','citizen','city','civil','claim','clap','clarify','claw','clay','clean','clerk','clever','click','client','cliff','climb','clinic','clip','clock','clog','close','cloth','cloud','clown','club','clump','cluster','clutch','coach','coast','coconut','code','coffee','coil','coin','collect','color','column','combine','come','comfort','comic','common','company','concert','conduct','confirm','congress','connect','consider','control','convince','cook','cool','copper','copy','coral','core','corn','correct','cost','cotton','couch','country','couple','course','cousin','cover','coyote','crack','cradle','craft','cram','crane','crash','crater','crawl','crazy','cream','credit','creek','crew','cricket','crime','crisp','critic','crop','cross','crouch','crowd','crucial','cruel','cruise','crumble','crunch','crush','cry','crystal','cube','culture','cup','cupboard','curious','current','curtain','curve','cushion','custom','cute','cycle','dad','damage','damp','dance','danger','daring','dash','daughter','dawn','day','deal','debate','debris','decade','december','decide','decline','decorate','decrease','deer','defense','define','defy','degree','delay','deliver','demand','demise','denial','dentist','deny','depart','depend','deposit','depth','deputy','derive','describe','desert','design','desk','despair','destroy','detail','detect','develop','device','devote','diagram','dial','diamond','diary','dice','diesel','diet','differ','digital','dignity','dilemma','dinner','dinosaur','direct','dirt','disagree','discover','disease','dish','dismiss','disorder','display','distance','divert','divide','divorce','dizzy','doctor','document','dog','doll','dolphin','domain','donate','donkey','donor','door','dose','double','dove','draft','dragon','drama','drastic','draw','dream','dress','drift','drill','drink','drip','drive','drop','drum','dry','duck','dumb','dune','during','dust','dutch','duty','dwarf','dynamic','eager','eagle','early','earn','earth','easily','east','easy','echo','ecology','economy','edge','edit','educate','effort','egg','eight','either','elbow','elder','electric','elegant','element','elephant','elevator','elite','else','embark','embody','embrace','emerge','emotion','employ','empower','empty','enable','enact','end','endless','endorse','enemy','energy','enforce','engage','engine','enhance','enjoy','enlist','enough','enrich','enroll','ensure','enter','entire','entry','envelope','episode','equal','equip','era','erase','erode','erosion','error','erupt','escape','essay','essence','estate','eternal','ethics','evidence','evil','evoke','evolve','exact','example','excess','exchange','excite','exclude','excuse','execute','exercise','exhaust','exhibit','exile','exist','exit','exotic','expand','expect','expire','explain','expose','express','extend','extra','eye','eyebrow','fabric','face','faculty','fade','faint','faith','fall','false','fame','family','famous','fan','fancy','fantasy','farm','fashion','fat','fatal','father','fatigue','fault','favorite','feature','february','federal','fee','feed','feel','female','fence','festival','fetch','fever','few','fiber','fiction','field','figure','file','film','filter','final','find','fine','finger','finish','fire','firm','first','fiscal','fish','fit','fitness','fix','flag','flame','flash','flat','flavor','flee','flight','flip','float','flock','floor','flower','fluid','flush','fly','foam','focus','fog','foil','fold','follow','food','foot','force','forest','forget','fork','fortune','forum','forward','fossil','foster','found','fox','fragile','frame','frequent','fresh','friend','fringe','frog','front','frost','frown','frozen','fruit','fuel','fun','funny','furnace','fury','future','gadget','gain','galaxy','gallery','game','gap','garage','garbage','garden','garlic','garment','gas','gasp','gate','gather','gauge','gaze','general','genius','genre','gentle','genuine','gesture','ghost','giant','gift','giggle','ginger','giraffe','girl','give','glad','glance','glare','glass','glide','glimpse','globe','gloom','glory','glove','glow','glue','goat','goddess','gold','good','goose','gorilla','gospel','gossip','govern','gown','grab','grace','grain','grant','grape','grass','gravity','great','green','grid','grief','grit','grocery','group','grow','grunt','guard','guess','guide','guilt','guitar','gun','gym','habit','hair','half','hammer','hamster','hand','happy','harbor','hard','harsh','harvest','hat','have','hawk','hazard','head','health','heart','heavy','hedgehog','height','hello','helmet','help','hen','hero','hidden','high','hill','hint','hip','hire','history','hobby','hockey','hold','hole','holiday','hollow','home','honey','hood','hope','horn','horror','horse','hospital','host','hotel','hour','hover','hub','huge','human','humble','humor','hundred','hungry','hunt','hurdle','hurry','hurt','husband','hybrid','ice','icon','idea','identify','idle','ignore','ill','illegal','illness','image','imitate','immense','immune','impact','impose','improve','impulse','inch','include','income','increase','index','indicate','indoor','industry','infant','inflict','inform','inhale','inherit','initial','inject','injury','inmate','inner','innocent','input','inquiry','insane','insect','inside','inspire','install','intact','interest','into','invest','invite','involve','iron','island','isolate','issue','item','ivory','jacket','jaguar','jar','jazz','jealous','jeans','jelly','jewel','job','join','joke','journey','joy','judge','juice','jump','jungle','junior','junk','just','kangaroo','keen','keep','ketchup','key','kick','kid','kidney','kind','kingdom','kiss','kit','kitchen','kite','kitten','kiwi','knee','knife','knock','know','lab','label','labor','ladder','lady','lake','lamp','language','laptop','large','later','latin','laugh','laundry','lava','law','lawn','lawsuit','layer','lazy','leader','leaf','learn','leave','lecture','left','leg','legal','legend','leisure','lemon','lend','length','lens','leopard','lesson','letter','level','liar','liberty','library','license','life','lift','light','like','limb','limit','link','lion','liquid','list','little','live','lizard','load','loan','lobster','local','lock','logic','lonely','long','loop','lottery','loud','lounge','love','loyal','lucky','luggage','lumber','lunar','lunch','luxury','lyrics','machine','mad','magic','magnet','maid','mail','main','major','make','mammal','man','manage','mandate','mango','mansion','manual','maple','marble','march','margin','marine','market','marriage','mask','mass','master','match','material','math','matrix','matter','maximum','maze','meadow','mean','measure','meat','mechanic','medal','media','melody','melt','member','memory','mention','menu','mercy','merge','merit','merry','mesh','message','metal','method','middle','midnight','milk','million','mimic','mind','minimum','minor','minute','miracle','mirror','misery','miss','mistake','mix','mixed','mixture','mobile','model','modify','mom','moment','monitor','monkey','monster','month','moon','moral','more','morning','mosquito','mother','motion','motor','mountain','mouse','move','movie','much','muffin','mule','multiply','muscle','museum','mushroom','music','must','mutual','myself','mystery','myth','naive','name','napkin','narrow','nasty','nation','nature','near','neck','need','negative','neglect','neither','nephew','nerve','nest','net','network','neutral','never','news','next','nice','night','noble','noise','nominee','noodle','normal','north','nose','notable','note','nothing','notice','novel','now','nuclear','number','nurse','nut','oak','obey','object','oblige','obscure','observe','obtain','obvious','occur','ocean','october','odor','off','offer','office','often','oil','okay','old','olive','olympic','omit','once','one','onion','online','only','open','opera','opinion','oppose','option','orange','orbit','orchard','order','ordinary','organ','orient','original','orphan','ostrich','other','outdoor','outer','output','outside','oval','oven','over','own','owner','oxygen','oyster','ozone','pact','paddle','page','pair','palace','palm','panda','panel','panic','panther','paper','parade','parent','park','parrot','party','pass','patch','path','patient','patrol','pattern','pause','pave','payment','peace','peanut','pear','peasant','pelican','pen','penalty','pencil','people','pepper','perfect','permit','person','pet','phone','photo','phrase','physical','piano','picnic','picture','piece','pig','pigeon','pill','pilot','pink','pioneer','pipe','pistol','pitch','pizza','place','planet','plastic','plate','play','please','pledge','pluck','plug','plunge','poem','poet','point','polar','pole','police','pond','pony','pool','popular','portion','position','possible','post','potato','pottery','poverty','powder','power','practice','praise','predict','prefer','prepare','present','pretty','prevent','price','pride','primary','print','priority','prison','private','prize','problem','process','produce','profit','program','project','promote','proof','property','prosper','protect','proud','provide','public','pudding','pull','pulp','pulse','pumpkin','punch','pupil','puppy','purchase','purity','purpose','purse','push','put','puzzle','pyramid','quality','quantum','quarter','question','quick','quit','quiz','quote','rabbit','raccoon','race','rack','radar','radio','rail','rain','raise','rally','ramp','ranch','random','range','rapid','rare','rate','rather','raven','raw','razor','ready','real','reason','rebel','rebuild','recall','receive','recipe','record','recycle','reduce','reflect','reform','refuse','region','regret','regular','reject','relax','release','relief','rely','remain','remember','remind','remove','render','renew','rent','reopen','repair','repeat','replace','report','require','rescue','resemble','resist','resource','response','result','retire','retreat','return','reunion','reveal','review','reward','rhythm','rib','ribbon','rice','rich','ride','ridge','rifle','right','rigid','ring','riot','ripple','risk','ritual','rival','river','road','roast','robot','robust','rocket','romance','roof','rookie','room','rose','rotate','rough','round','route','royal','rubber','rude','rug','rule','run','runway','rural','sad','saddle','sadness','safe','sail','salad','salmon','salon','salt','salute','same','sample','sand','satisfy','satoshi','sauce','sausage','save','say','scale','scan','scare','scatter','scene','scheme','school','science','scissors','scorpion','scout','scrap','screen','script','scrub','sea','search','season','seat','second','secret','section','security','seed','seek','segment','select','sell','seminar','senior','sense','sentence','series','service','session','settle','setup','seven','shadow','shaft','shallow','share','shed','shell','sheriff','shield','shift','shine','ship','shiver','shock','shoe','shoot','shop','short','shoulder','shove','shrimp','shrug','shuffle','shy','sibling','sick','side','siege','sight','sign','silent','silk','silly','silver','similar','simple','since','sing','siren','sister','situate','six','size','skate','sketch','ski','skill','skin','skirt','skull','slab','slam','sleep','slender','slice','slide','slight','slim','slogan','slot','slow','slush','small','smart','smile','smoke','smooth','snack','snake','snap','sniff','snow','soap','soccer','social','sock','soda','soft','solar','soldier','solid','solution','solve','someone','song','soon','sorry','sort','soul','sound','soup','source','south','space','spare','spatial','spawn','speak','special','speed','spell','spend','sphere','spice','spider','spike','spin','spirit','split','spoil','sponsor','spoon','sport','spot','spray','spread','spring','spy','square','squeeze','squirrel','stable','stadium','staff','stage','stairs','stamp','stand','start','state','stay','steak','steel','stem','step','stereo','stick','still','sting','stock','stomach','stone','stool','story','stove','strategy','street','strike','strong','struggle','student','stuff','stumble','style','subject','submit','subway','success','such','sudden','suffer','sugar','suggest','suit','summer','sun','sunny','sunset','super','supply','supreme','sure','surface','surge','surprise','surround','survey','suspect','sustain','swallow','swamp','swap','swarm','swear','sweet','swift','swim','swing','switch','sword','symbol','symptom','syrup','system','table','tackle','tag','tail','talent','talk','tank','tape','target','task','taste','tattoo','taxi','teach','team','tell','ten','tenant','tennis','tent','term','test','text','thank','that','theme','then','theory','there','they','thing','this','thought','three','thrive','throw','thumb','thunder','ticket','tide','tiger','tilt','timber','time','tiny','tip','tired','tissue','title','toast','tobacco','today','toddler','toe','together','toilet','token','tomato','tomorrow','tone','tongue','tonight','tool','tooth','top','topic','topple','torch','tornado','tortoise','toss','total','tourist','toward','tower','town','toy','track','trade','traffic','tragic','train','transfer','trap','trash','travel','tray','treat','tree','trend','trial','tribe','trick','trigger','trim','trip','trophy','trouble','truck','true','truly','trumpet','trust','truth','try','tube','tuition','tumble','tuna','tunnel','turkey','turn','turtle','twelve','twenty','twice','twin','twist','two','type','typical','ugly','umbrella','unable','unaware','uncle','uncover','under','undo','unfair','unfold','unhappy','uniform','unique','unit','universe','unknown','unlock','until','unusual','unveil','update','upgrade','uphold','upon','upper','upset','urban','urge','usage','use','used','useful','useless','usual','utility','vacant','vacuum','vague','valid','valley','valve','van','vanish','vapor','various','vast','vault','vehicle','velvet','vendor','venture','venue','verb','verify','version','very','vessel','veteran','viable','vibrant','vicious','victory','video','view','village','vintage','violin','virtual','virus','visa','visit','visual','vital','vivid','vocal','voice','void','volcano','volume','vote','voyage','wage','wagon','wait','walk','wall','walnut','want','warfare','warm','warrior','wash','wasp','waste','water','wave','way','wealth','weapon','wear','weasel','weather','web','wedding','weekend','weird','welcome','west','wet','whale','what','wheat','wheel','when','where','whip','whisper','wide','width','wife','wild','will','win','window','wine','wing','wink','winner','winter','wire','wisdom','wise','wish','witness','wolf','woman','wonder','wood','wool','word','work','world','worry','worth','wrap','wreck','wrestle','wrist','write','wrong','yard','year','yellow','you','young','youth','zebra','zero','zone','zoo'];
-
-    let currentAccountId = null;
-    let currentSeedphrase = null;
-    let currentReferralCode = null;
-    let currentPlayerPublicId = null;
-
-    const USER_BALANCE_KEY = 'metafoot_balance';
-    const LAST_CLAIM_KEY = 'metafoot_last_claim';
-    const ACTIVE_MINERS_KEY = 'metafoot_active_miners';
-    const TOTAL_DISTRIBUTED_KEY = 'metafoot_total_distributed';
-    const TOTAL_AIRDROP_CAP = 300000000;  // 300M
-    const REF_CODE_V2_KEY = 'metafoot_ref_code_v2';
-    const ENCRYPTED_SEED_KEY = 'metafoot_encrypted_seed';
-    const SESSION_KEY = 'metafoot_session';
-    const SESSION_EXPIRY_DAYS = 30;
-    const REFERRALS_KEY = 'metafoot_referrals_global';
-    const LAST_COLLECTED_REFERRAL_EARNINGS_KEY = 'metafoot_last_collected_ref_earnings';
-    const LAST_BONUS_CLAIM_KEY = 'metafoot_last_bonus_claim';
-    const LAST_SEEN_UPDATE_KEY = 'metafoot_last_seen_update';
-    const attributes = ['speed','shoot','power','intelligence','brilliance','accuracy'];
-    let playerAttrs = {};
-    const BASE_COST = 0.3;
-    const TIER_SIZE = 20;
-    const TG_LAST_KEY = 'metafoot_last_telegram_claim';
-    const X_LAST_KEY = 'metafoot_last_x_claim';
-    const COOLDOWN_MS = 30 * 60 * 1000;
-
-    // --- Read referral code from URL ---
-    (function() {
-        const params = new URLSearchParams(window.location.search);
-        const ref = params.get('ref');
-        if (ref && ref.length === 12 && /^[a-f0-9]+$/i.test(ref)) {
-            sessionStorage.setItem('invite_ref_code', ref.toLowerCase());
-        }
-    })();
-
-    function userKey(baseKey) {
-        if (!baseKey) return baseKey;
-        if (baseKey === ACTIVE_MINERS_KEY || baseKey === TOTAL_DISTRIBUTED_KEY || baseKey === REFERRALS_KEY) return baseKey;
-        return currentAccountId ? `${currentAccountId}_${baseKey}` : baseKey;
+function getTotalSpent(attrs) {
+  let total = 0;
+  if (!attrs || typeof attrs !== 'object') return 0;
+  for (let attr in attrs) {
+    const lv = attrs[attr] || 0;
+    for (let l = 0; l < lv; l++) {
+      total += getUpgradeCost(l);
     }
-    function getStorage(key) { return localStorage.getItem(userKey(key)); }
-    function setStorage(key, value) { localStorage.setItem(userKey(key), value); }
+  }
+  return total;
+}
+// -------------------------------------------
 
-    let audioCtx = null;
-    function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
-    function playGamepadSound() {
-        if (!audioCtx) initAudio(); if (!audioCtx) return;
-        if (audioCtx.state==='suspended') audioCtx.resume();
-        const now = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-        osc.connect(gain); gain.connect(audioCtx.destination);
-        osc.type='sine'; osc.frequency.value=880;
-        gain.gain.setValueAtTime(1.0,now); gain.gain.exponentialRampToValueAtTime(0.0001,now+0.1);
-        osc.start(now); osc.stop(now+0.08);
-    }
+try {
+  if (fs.existsSync(DATA_FILE)) {
+    data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    // ensure all keys exist
+    data.minersCounted = data.minersCounted || {};
+    data.totalMiners = data.totalMiners || 0;
+    data.totalDistributed = data.totalDistributed || 0;
+    data.claims = data.claims || {};
+    data.users = data.users || {};
+    data.referrals = data.referrals || [];
+    data.referralRewards = data.referralRewards || {};
+    data.referralFriends = data.referralFriends || {};
+    data.updates = data.updates || [];
+    data.stadiumsSold = data.stadiumsSold || 0;
+    data.stadiumOwners = data.stadiumOwners || {};
+  }
+} catch (e) {}
 
-    function copyToClipboard(text) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
-        } else {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand('copy');
-                return true;
-            } catch (e) { return false; }
-            finally { document.body.removeChild(textarea); }
-        }
-    }
+function saveData() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data));
+}
 
-    function sha256hex(data) { return CryptoJS.SHA256(data).toString(CryptoJS.enc.Hex); }
-    function secureRandomHex12() {
-        if (window.crypto && window.crypto.getRandomValues) {
-            const arr = new Uint8Array(6); window.crypto.getRandomValues(arr);
-            return Array.from(arr, b => b.toString(16).padStart(2,'0')).join('');
-        } else {
-            return Math.random().toString(16).substring(2,14).padEnd(12,'0');
-        }
-    }
-
-    function generateSeedphrase() {
-        const entropy = new Uint8Array(16); if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(entropy);
-        let bits = ''; for(let i=0;i<entropy.length;i++) bits += entropy[i].toString(2).padStart(8,'0');
-        const words = []; for(let i=0;i<12;i++) words.push(wordlist[parseInt(bits.substr(i*11,11),2)]);
-        return words.join(' ');
-    }
-
-    function normalizeSeedphrase(phrase) { return phrase.replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,' ').toLowerCase().trim(); }
-    function deriveAccountId(seedphrase) { return sha256hex(normalizeSeedphrase(seedphrase)).substring(0,12); }
-    function derivePlayerPublicId(accountId) { return sha256hex(accountId + "metafoot_player_salt").substring(0,12); }
-
-    // ---------- Cloud Sync ----------
-    async function saveUserToCloud() {
-        if (!currentAccountId) return;
-        try {
-            const backup = {
-                balance: getUserBalance(),
-                attributes: getStorage('player_training_attrs') ? JSON.parse(getStorage('player_training_attrs')) : {},
-                username: getStorage('profile_username') || '',
-                lastClaim: getStorage(LAST_CLAIM_KEY),
-                referrals: getReferralList().filter(r => r.referrer === currentReferralCode || r.referred === currentReferralCode),
-                referralCode: currentReferralCode
-            };
-            await fetch(`${API_BASE}/save-user`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ accountId:currentAccountId, userData:backup }) });
-        } catch(e) { console.warn('Cloud save failed', e); }
-    }
-
-    async function loadUserFromCloud() {
-        if (!currentAccountId) return null;
-        try {
-            const res = await fetch(`${API_BASE}/load-user?accountId=${currentAccountId}`);
-            return await res.json();
-        } catch(e) { return null; }
-    }
-
-    async function registerMinerGlobally(accountId) {
-        try {
-            const res = await fetch(`${API_BASE}/register-miner`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ accountId }) });
-            const result = await res.json();
-            localStorage.setItem(ACTIVE_MINERS_KEY, result.totalMiners);
-            updateMiningStats();
-        } catch(e) { updateMiningStats(); }
-    }
-
-    async function refreshGlobalStats() {
-        try {
-            const [minersRes, distRes] = await Promise.all([
-                fetch(`${API_BASE}/total-miners`),
-                fetch(`${API_BASE}/total-distributed`)
-            ]);
-            localStorage.setItem(ACTIVE_MINERS_KEY, (await minersRes.json()).totalMiners);
-            localStorage.setItem(TOTAL_DISTRIBUTED_KEY, (await distRes.json()).totalDistributed);
-        } catch(e) {}
-        updateMiningStats();
-    }
-
-    async function claimReward() {
-        if (!currentAccountId) return;
-        try {
-            const res = await fetch(`${API_BASE}/claim`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ accountId:currentAccountId }) });
-            const result = await res.json();
-            if (result.error) {
-                if (result.error === 'Already claimed today') {
-                    showModal('Already claimed', `You can claim again in ${formatTime(result.remainingMs)}.`);
-                } else showModal('Claim failed', result.error);
-                return;
-            }
-            addToUserBalance(result.reward);
-            setStorage(LAST_CLAIM_KEY, Date.now().toString());
-            updateMiningStats();
-            canvasConfetti({ particleCount:120, spread:70, origin:{y:0.6}, colors:['#ff3333','#ff8888'] });
-            showModal('Claimed', `🎉 You claimed ${result.reward} $FOOT!`);
-            playGamepadSound();
-            updateCircularTimer();
-            saveUserToCloud();
-        } catch(e) { showModal('Server asleep','The server is waking up. Please wait a few seconds and try again.'); }
-    }
-
-    function formatTime(ms) {
-        const h = Math.floor(ms/3600000);
-        const m = Math.floor((ms%3600000)/60000);
-        const s = Math.floor((ms%60000)/1000);
-        return `${h}h ${m}m ${s}s`;
-    }
-
-    // -------- Wallet creation / restore --------
-    async function createWallet() {
-        const seedphrase = generateSeedphrase();
-        const accountId = deriveAccountId(seedphrase);
-        const referralCode = secureRandomHex12();
-        localStorage.setItem(ENCRYPTED_SEED_KEY, seedphrase);
-        setStorage(REF_CODE_V2_KEY, referralCode);
-        currentSeedphrase = seedphrase;
-        currentAccountId = accountId;
-        currentReferralCode = referralCode;
-        currentPlayerPublicId = derivePlayerPublicId(accountId);
-        await registerMinerGlobally(accountId);
-        return { accountId, seedphrase, referralCode };
-    }
-
-    async function restoreFromBackup(backupText) {
-        try {
-            const backup = JSON.parse(backupText);
-            if (!backup.seedphrase) return { error:'invalid_backup' };
-            currentSeedphrase = backup.seedphrase;
-            const accountId = deriveAccountId(backup.seedphrase);
-            localStorage.setItem(ENCRYPTED_SEED_KEY, backup.seedphrase);
-            if (backup.referralCode) setStorage(REF_CODE_V2_KEY, backup.referralCode);
-            else setStorage(REF_CODE_V2_KEY, secureRandomHex12());
-            currentReferralCode = getStorage(REF_CODE_V2_KEY);
-            return { accountId, backup };
-        } catch(e) { return { error:'invalid_backup' }; }
-    }
-
-    async function restoreFromSeedphrase(seedphrase) {
-        const accountId = deriveAccountId(seedphrase);
-        localStorage.setItem(ENCRYPTED_SEED_KEY, seedphrase);
-        if (!getStorage(REF_CODE_V2_KEY)) setStorage(REF_CODE_V2_KEY, secureRandomHex12());
-        currentSeedphrase = seedphrase;
-        currentReferralCode = getStorage(REF_CODE_V2_KEY);
-        return accountId;
-    }
-
-    function saveSession(accountId) { localStorage.setItem(SESSION_KEY, JSON.stringify({ accountId, expires:Date.now()+SESSION_EXPIRY_DAYS*86400000 })); }
-    function loadSession() {
-        const s = localStorage.getItem(SESSION_KEY);
-        if (!s) return null;
-        try {
-            const o = JSON.parse(s);
-            if (o.expires && Date.now()<o.expires) return o.accountId;
-        } catch(e) {}
-        localStorage.removeItem(SESSION_KEY);
-        return null;
-    }
-    function clearSession() { localStorage.removeItem(SESSION_KEY); }
-
-    function loadSeedphraseFromStorage() {
-        const stored = localStorage.getItem(ENCRYPTED_SEED_KEY);
-        if (stored) currentSeedphrase = stored;
-    }
-
-    const customModal = document.getElementById('customModalOverlay');
-    const customModalBox = document.getElementById('customModalBox');
-    function showModal(title, contentHTML) {
-        customModalBox.innerHTML = `<h3 style="color:#ffaaaa;margin-bottom:1rem;">${title}</h3><div>${contentHTML}</div><button class="action-btn" onclick="document.getElementById('customModalOverlay').classList.remove('active')">Close</button>`;
-        customModal.classList.add('active');
-    }
-    window.showModal = showModal;
-
-    // ---- APK Download Modal (fixed URL) ----
-    function showApkDownloadModal() {
-        const apkUrl = 'https://github.com/metafooot/Metafoott/releases/download/Metafoot/app-debug.apk';
-        customModalBox.innerHTML = `
-            <h3 style="color:#ffaaaa;margin-bottom:1rem;">⚽ Download the METAFOOT App</h3>
-            <div style="color:#ffcccc;margin-bottom:1.2rem;">
-                <p>For the best experience, download our app.</p>
-                <p style="margin-top:0.8rem;">✅ Faster mining &amp; never miss a claim</p>
-                <p style="margin-top:0.3rem;">✅ Exclusive bonuses inside the app</p>
-            </div>
-            <a href="${apkUrl}" download class="apk-download-btn">⚡ Download APK</a>
-            <button class="action-btn" style="background:transparent;border:1px solid #ff5555;color:#ffaaaa;" onclick="document.getElementById('customModalOverlay').classList.remove('active')">Continue in browser</button>
-        `;
-        customModal.classList.add('active');
-    }
-
-    function showLoadingModal() {
-        document.getElementById('loadingModalOverlay').classList.add('active');
-    }
-    function hideLoadingModal() {
-        document.getElementById('loadingModalOverlay').classList.remove('active');
-    }
-
-    function getActiveMiners() { let m = parseInt(localStorage.getItem(ACTIVE_MINERS_KEY)); return isNaN(m)?0:m; }
-    function getCurrentRate() {
-        const miners = getActiveMiners();
-        if (miners<15000) return 4;
-        if (miners<100000) return 2;
-        if (miners<500000) return 1;
-        if (miners<1000000) return 0.5;
-        return 0.25;
-    }
-    function getTotalDistributed() { let d = parseInt(localStorage.getItem(TOTAL_DISTRIBUTED_KEY)); return isNaN(d)?0:d; }
-    function getUserBalance() { let b = parseFloat(getStorage(USER_BALANCE_KEY)); return isNaN(b)?0:b; }
-    function setUserBalance(amount) { setStorage(USER_BALANCE_KEY, amount); updateWalletDisplay(); }
-    function addToUserBalance(amount) { setUserBalance(getUserBalance()+amount); }
-    function updateWalletDisplay() { document.getElementById('walletBalance').innerText = getUserBalance().toLocaleString(); }
-    function updateMiningStats() { document.getElementById('miningRateDisplay').innerHTML = `${getCurrentRate()} $FOOT / day`; updateWalletDisplay(); }
-    let timerInterval = null;
-    function updateCircularTimer() {
-        const last = getStorage(LAST_CLAIM_KEY);
-        const timer = document.getElementById('timerText');
-        if (!last) { timer.innerText = 'Ready!'; return; }
-        const diff = (parseInt(last) + 86400000) - Date.now();
-        if (diff <= 0) timer.innerText = 'Ready!';
-        else {
-            const h = Math.floor(diff/3600000);
-            const m = Math.floor((diff%3600000)/60000);
-            const s = Math.floor((diff%60000)/1000);
-            timer.innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-        }
-    }
-
-    document.getElementById('claimCircleBtn').addEventListener('click', claimReward);
-
-    // Slideshow (no pre-sale)
-    const summaries = ["Rental system","Train player","How you earn","Buy/sell player","Tournaments","League system","Knowledge challenge","Virtual Card","Football Academy","METAFOOT game"];
-    let slideSeq = [], currentSlide = 0, slideTimeout, countdownInterval;
-    const slideshowWrapper = document.getElementById('slideshowWrapper'), slideshowTimer = document.getElementById('slideshowTimer');
-    function buildSlides() {
-        slideSeq = summaries.map((s,i)=>({ type:'summary', text:`${i+1}. ${s}` }));
-        slideshowWrapper.innerHTML = slideSeq.map(s => `<div class="slideshow-slide"><div class="slideshow-title">⚽ METAFOOT</div><div class="slideshow-text">${s.text}</div></div>`).join('');
-        slideshowWrapper.style.transform = 'translateX(0%)';
-    }
-    function nextSlide() { currentSlide = (currentSlide+1) % slideSeq.length; slideshowWrapper.style.transform = `translateX(-${currentSlide*100}%)`; resetTimer(); }
-    function resetTimer() { clearTimeout(slideTimeout); clearInterval(countdownInterval); let t=40; slideshowTimer.innerText = `Next slide in ${t}s`; countdownInterval = setInterval(()=>{ t--; if(t>=0) slideshowTimer.innerText = `Next slide in ${t}s`; },1000); slideTimeout = setTimeout(()=>{ clearInterval(countdownInterval); nextSlide(); },40000); }
-    buildSlides(); resetTimer();
-
-    // Role toggle
-    const roleHeader = document.getElementById('roleHeader'), switchPlayerBtn = document.getElementById('switchToPlayerBtn'), switchManagerBtn = document.getElementById('switchToManagerBtn'), actionContainer = document.getElementById('actionButtonsContainer');
-    function setUIRole(role) {
-        if(role==='player') {
-            roleHeader.innerHTML = `<div class="role-badge">⚡ Player Mode</div><h1><i class="fas fa-futbol"></i> Player Mining</h1>`;
-            switchPlayerBtn.classList.add('active'); switchManagerBtn.classList.remove('active');
-            actionContainer.innerHTML = '<button class="action-btn" id="trainBtn"><i class="fas fa-dumbbell"></i> Train Player</button>';
-            document.getElementById('trainBtn').addEventListener('click', ()=> { openTrainingScreen(); playGamepadSound(); });
-        } else {
-            roleHeader.innerHTML = `<div class="role-badge">👔 Manager Mode</div><h1><i class="fas fa-trophy"></i> Manager Mining</h1>`;
-            switchManagerBtn.classList.add('active'); switchPlayerBtn.classList.remove('active');
-            actionContainer.innerHTML = '<button class="action-btn" id="buyPlayerBtn"><i class="fas fa-shopping-cart"></i> Buy Player</button><button class="action-btn" id="sellPlayerBtn"><i class="fas fa-exchange-alt"></i> Sell Player</button>';
-            document.getElementById('buyPlayerBtn').addEventListener('click', ()=> { showScreen('buyPlayerScreen'); playGamepadSound(); });
-            document.getElementById('sellPlayerBtn').addEventListener('click', ()=> { showScreen('sellPlayerScreen'); playGamepadSound(); });
-        }
-        setStorage('last_active_role', role);
-    }
-    switchPlayerBtn.addEventListener('click', ()=> { setUIRole('player'); playGamepadSound(); });
-    switchManagerBtn.addEventListener('click', ()=> { setUIRole('manager'); playGamepadSound(); });
-
-    function getPlayerId() { return currentPlayerPublicId; }
-    function getUpgradeCost(level) { return BASE_COST * Math.pow(2, Math.floor(level/TIER_SIZE)); }
-    function getTotalSpent(attrs) { let total=0; for (let attr in attrs) for (let l=0; l<attrs[attr]; l++) total += getUpgradeCost(l); return total; }
-    function loadAttributes() { const stored = getStorage('player_training_attrs'); playerAttrs = stored ? JSON.parse(stored) : Object.fromEntries(attributes.map(a => [a,0])); }
-    function saveAttributes() { setStorage('player_training_attrs', JSON.stringify(playerAttrs)); }
-    function renderTrainingScreen() {
-        const balance = getUserBalance();
-        document.getElementById('trainingBalance').innerText = balance.toLocaleString();
-        document.getElementById('playerIdDisplay').innerText = `ID: ${getPlayerId()}`;
-        const worth = getTotalSpent(playerAttrs);
-        document.getElementById('playerWorthDisplay').innerHTML = `Worth: ${worth.toFixed(1)} $FOOT`;
-        document.getElementById('totalSpentDisplay').innerText = worth.toFixed(1);
-        const container = document.getElementById('trainingAttributesContainer');
-        container.innerHTML = '';
-        attributes.forEach(attr => {
-            const val = playerAttrs[attr]||0;
-            const percent = Math.min(100,val)+'%';
-            const nextCost = val<100 ? getUpgradeCost(val) : null;
-            const row = document.createElement('div');
-            row.className = 'attribute-row';
-            row.innerHTML = `<div class="attribute-name">${attr.charAt(0).toUpperCase()+attr.slice(1)}</div><div class="bar-container"><div class="bar-fill" style="width:${percent};"></div></div><div class="attribute-value">${val}</div>${nextCost ? `<button class="upgrade-btn" data-attr="${attr}" data-cost="${nextCost.toFixed(2)}">+1 (${nextCost.toFixed(2)})</button>` : '<button class="upgrade-btn" disabled>Max</button>'}`;
-            container.appendChild(row);
-        });
-        document.querySelectorAll('.upgrade-btn:not([disabled])').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const attr = btn.dataset.attr;
-                const cost = parseFloat(btn.dataset.cost);
-                if (getUserBalance() >= cost) {
-                    addToUserBalance(-cost);
-                    playerAttrs[attr] = (playerAttrs[attr]||0)+1;
-                    saveAttributes();
-                    renderTrainingScreen();
-                    updateMiningStats();
-                    playGamepadSound();
-                    saveUserToCloud();
-                } else showModal('Need more $FOOT', `You need ${cost.toFixed(2)} $FOOT.`);
-            });
-        });
-        const tiers = [0,20,40,60,80,100];
-        const maxCost = getUpgradeCost(99);
-        document.getElementById('trainingChartInner').innerHTML = tiers.map(lvl => {
-            const cost = lvl<100 ? getUpgradeCost(lvl) : getUpgradeCost(99);
-            return `<div class="chart-row"><div class="chart-label">Lvl ${lvl}</div><div class="chart-bar-container"><div class="chart-bar" style="width:${(cost/maxCost)*100}%;"></div></div><div class="chart-value">${cost.toFixed(2)}</div></div>`;
-        }).join('');
-    }
-    function openTrainingScreen() { loadAttributes(); renderTrainingScreen(); hideAllScreens(); document.getElementById('trainingScreen').classList.remove('hidden'); }
-
-    function hideAllScreens() { document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); }
-    function showScreen(id) { hideAllScreens(); document.getElementById(id).classList.remove('hidden'); }
-
-    // ---------- Referrals ----------
-    function getReferralList() { const stored = localStorage.getItem(REFERRALS_KEY); return stored ? JSON.parse(stored) : []; }
-    function getLastCollectedReferralEarnings() { const stored = localStorage.getItem(LAST_COLLECTED_REFERRAL_EARNINGS_KEY); return stored ? parseFloat(stored) : 0; }
-    function setLastCollectedReferralEarnings(amount) { localStorage.setItem(LAST_COLLECTED_REFERRAL_EARNINGS_KEY, amount.toString()); }
-
-    async function refreshReferralInfo() {
-        const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
-        if (!code || code.length !== 12) return;
-
-        const existingList = getReferralList();
-
-        try {
-            const res = await fetch(`${API_BASE}/referral-info?code=${code}`);
-            if (!res.ok) {
-                updateReferralUIFromList(existingList);
-                return;
-            }
-            const info = await res.json();
-            const friends = info.friends || [];
-            const totalEarned = info.totalEarned || 0;
-
-            const existingReferred = new Set(existingList.map(r => r.referred));
-            let mergedList = [...existingList];
-            friends.forEach(f => {
-                if (!existingReferred.has(f.referred)) {
-                    mergedList.push({ referrer: code, referred: f.referred, timestamp: f.timestamp });
-                }
-            });
-            localStorage.setItem(REFERRALS_KEY, JSON.stringify(mergedList));
-
-            const lastCollected = getLastCollectedReferralEarnings();
-            if (totalEarned > lastCollected) {
-                addToUserBalance(totalEarned - lastCollected);
-                setLastCollectedReferralEarnings(totalEarned);
-                saveUserToCloud();
-            }
-            updateReferralUIFromList(mergedList, totalEarned);
-        } catch(e) {
-            updateReferralUIFromList(existingList);
-        }
-    }
-
-    function getReferralReward() {
-        const miners = getActiveMiners();
-        const base = 2;
-        if (miners<15000) return base;
-        if (miners<100000) return base/2;
-        if (miners<500000) return base/4;
-        if (miners<1000000) return base/8;
-        return base/16;
-    }
-
-    function updateReferralUIFromList(list, totalEarned = null) {
-        if (!currentReferralCode) return;
-        document.getElementById('refCodeDisplay').textContent = currentReferralCode;
-        document.getElementById('refCodeDisplay').classList.add('blurred');
-        const invitedFriends = list.filter(r => r.referrer === currentReferralCode);
-        document.getElementById('pendingReferralAmount').innerText = totalEarned !== null ? totalEarned.toFixed(2) : (invitedFriends.length * getReferralReward()).toFixed(2);
-        document.getElementById('referralCount').innerText = invitedFriends.length;
-        const friendsContainer = document.getElementById('friendsListContainer');
-        if (invitedFriends.length > 0) {
-            friendsContainer.innerHTML = '<strong>Invited Friends:</strong><ul class="friends-list">' + invitedFriends.map(f => `<li>${f.referred} <small style="color:#888;">(${new Date(f.timestamp).toLocaleDateString()})</small></li>`).join('') + '</ul>';
-        } else {
-            friendsContainer.innerHTML = '<p style="font-size:0.8rem; color:#888;">No friends invited yet.</p>';
-        }
-        // Update ambassador badge
-        updateAmbassadorBadge(invitedFriends.length);
-    }
-
-    async function addReferralOnServer(referrerCode, referredCode) {
-        try {
-            const res = await fetch(`${API_BASE}/referral-add`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ referrerCode, referredCode }) });
-            const result = await res.json();
-            if (result.success) {
-                const list = getReferralList();
-                list.push({ referrer:referrerCode, referred:referredCode, timestamp:Date.now() });
-                localStorage.setItem(REFERRALS_KEY, JSON.stringify(list));
-                if (currentReferralCode === referredCode) {
-                    addToUserBalance(result.reward||getReferralReward());
-                    saveUserToCloud();
-                }
-                refreshReferralInfo();
-                updateMiningStats();
-            }
-            return result;
-        } catch(e) { return { error:'Server unreachable' }; }
-    }
-
-    function handleReferralSubmit() {
-        const friendCode = document.getElementById('friendCodeInput').value.trim();
-        const errorEl = document.getElementById('referralError');
-        if (!friendCode || friendCode.length!==12 || !/^[a-f0-9]+$/i.test(friendCode)) { errorEl.innerText = 'Invalid referral code.'; return; }
-        if (friendCode === currentReferralCode) { errorEl.innerText = 'You cannot refer yourself.'; return; }
-        addReferralOnServer(friendCode, currentReferralCode).then(result => {
-            if (result.success) {
-                errorEl.innerText = '';
-                showModal('Connected & Rewarded', `✅ You earned ${(result.reward||getReferralReward()).toFixed(2)} $FOOT instantly! Your friend will also receive ${(result.reward||getReferralReward()).toFixed(2)} $FOOT.`);
-                document.getElementById('friendCodeInput').value = '';
-            } else errorEl.innerText = result.error || 'Connection failed.';
-        }).catch(() => { errorEl.innerText = 'Connection failed.'; });
-    }
-
-    async function autoConnectReferral() {
-        const storedRef = sessionStorage.getItem('invite_ref_code');
-        if (!storedRef || !currentAccountId || !currentReferralCode) return;
-        if (storedRef === currentReferralCode) { sessionStorage.removeItem('invite_ref_code'); return; }
-        const result = await addReferralOnServer(storedRef, currentReferralCode);
-        if (result.success) showModal('Welcome!', `You've been connected via invite link and received ${(result.reward||getReferralReward()).toFixed(2)} $FOOT!`);
-        sessionStorage.removeItem('invite_ref_code');
-    }
-
-    // Ambassador badge logic
-    function getAmbassadorTier(count) {
-        if (count >= 500) return 'team';
-        if (count >= 300) return 'gold';
-        if (count >= 100) return 'silver';
-        if (count >= 50) return 'bronze';
-        if (count >= 20) return 'lite';
-        return null;
-    }
-    function updateAmbassadorBadge(count) {
-        const badge = document.getElementById('ambassadorBadge');
-        if (!badge) return;
-        const tier = getAmbassadorTier(count);
-        if (!tier) {
-            badge.style.display = 'none';
-            return;
-        }
-        badge.style.display = 'inline-flex';
-        badge.className = 'ambassador-badge ' + tier;
-        badge.title = {
-            lite: 'Lite Ambassador (20+ refs)',
-            bronze: 'Bronze Ambassador (50+ refs)',
-            silver: 'Silver Ambassador (100+ refs)',
-            gold: 'Gold Ambassador (300+ refs)',
-            team: 'Team Ambassador (500+ refs)'
-        }[tier];
-    }
-
-    document.getElementById('navReferral').addEventListener('click', ()=> { showScreen('referralScreen'); refreshReferralInfo(); playGamepadSound(); });
-    document.getElementById('submitReferralBtn').addEventListener('click', handleReferralSubmit);
-
-    document.getElementById('copyInviteLinkBtn').addEventListener('click', async ()=>{
-        const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
-        if (!code) { showModal('Error','No referral code found.'); return; }
-        const inviteUrl = `${window.location.origin}${window.location.pathname}?ref=${code}`;
-        const success = await copyToClipboard(inviteUrl);
-        showModal(success?'Copied':'Manual Copy', success?'Invite link copied to clipboard!':`Select and copy: <span style="font-family:monospace;">${inviteUrl}</span>`);
+// Helper: read JSON body
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => (body += chunk));
+    req.on('end', () => {
+      try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
     });
+  });
+}
 
-    document.getElementById('copyRefCodeBtn').addEventListener('click', async ()=>{
-        const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
-        if (!code) { showModal('Error','No referral code found.'); return; }
-        const success = await copyToClipboard(code);
-        showModal(success?'Copied':'Manual Copy', success?'Referral code copied.':`Select and copy: <span style="font-family:monospace;">${code}</span>`);
-    });
+function getCurrentRate() {
+  const m = data.totalMiners;
+  if (m < 15000) return 4;
+  if (m < 100000) return 2;
+  if (m < 500000) return 1;
+  if (m < 1000000) return 0.5;
+  return 0.25;
+}
 
-    // ---------- Updates & Bell Badge ----------
-    async function fetchUpdates() {
-        try {
-            const res = await fetch(UPDATES_GIST_URL);
-            if (!res.ok) return [];
-            return await res.json();
-        } catch(e) { return []; }
+function getReferralReward() {
+  const miners = data.totalMiners;
+  const base = 2;
+  if (miners < 15000) return base;
+  if (miners < 100000) return base / 2;
+  if (miners < 500000) return base / 4;
+  if (miners < 1000000) return base / 8;
+  return base / 16;
+}
+
+const server = http.createServer(async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    return res.end();
+  }
+
+  // --- Health check ---
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    return res.end('OK');
+  }
+
+  // --- Public updates feed ---
+  if (req.method === 'GET' && req.url === '/updates') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(data.updates));
+  }
+
+  // --- Admin: post an update ---
+  if (req.method === 'POST' && req.url.startsWith('/admin-update')) {
+    const url = new URL(req.url, `http://localhost`);
+    const key = url.searchParams.get('key');
+    if (key !== ADMIN_KEY) {
+      res.writeHead(403);
+      return res.end(JSON.stringify({ error: 'Forbidden' }));
     }
+    try {
+      const { title, content } = await parseBody(req);
+      if (!title || !content) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Missing title or content' }));
+      }
+      const newUpdate = {
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+        title,
+        content,
+        date: new Date().toISOString().split('T')[0]
+      };
+      data.updates.unshift(newUpdate);
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, update: newUpdate }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
 
-    function renderUpdates(updates) {
-        const container = document.getElementById('dynamicUpdatesContainer');
-        if (!updates.length) {
-            container.innerHTML = '<p style="color:#ff8888; text-align:center;">No updates yet.</p>';
-            return;
+  // --- Admin: delete an update ---
+  if (req.method === 'DELETE' && req.url.startsWith('/admin-update')) {
+    const url = new URL(req.url, `http://localhost`);
+    const key = url.searchParams.get('key');
+    if (key !== ADMIN_KEY) {
+      res.writeHead(403);
+      return res.end(JSON.stringify({ error: 'Forbidden' }));
+    }
+    const id = url.searchParams.get('id');
+    if (!id) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: 'Missing id' }));
+    }
+    const index = data.updates.findIndex(u => u.id === id);
+    if (index === -1) {
+      res.writeHead(404);
+      return res.end(JSON.stringify({ error: 'Update not found' }));
+    }
+    data.updates.splice(index, 1);
+    saveData();
+    res.writeHead(200);
+    res.end(JSON.stringify({ success: true }));
+  }
+
+  // --- Register new miner ---
+  else if (req.method === 'POST' && req.url === '/register-miner') {
+    try {
+      const { accountId } = await parseBody(req);
+      if (!accountId || accountId.length !== 12) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Invalid accountId' }));
+      }
+      if (data.minersCounted[accountId]) {
+        return res.end(JSON.stringify({ alreadyCounted: true, totalMiners: data.totalMiners }));
+      }
+      data.minersCounted[accountId] = true;
+      data.totalMiners++;
+      saveData();
+      return res.end(JSON.stringify({ alreadyCounted: false, totalMiners: data.totalMiners }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Get total miners ---
+  else if (req.method === 'GET' && req.url === '/total-miners') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ totalMiners: data.totalMiners }));
+  }
+
+  // --- Claim reward ---
+  else if (req.method === 'POST' && req.url === '/claim') {
+    try {
+      const { accountId } = await parseBody(req);
+      if (!accountId) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Missing accountId' }));
+      }
+      const now = Date.now();
+      const lastClaim = data.claims[accountId] || 0;
+      const oneDay = 86400000;
+      if (now - lastClaim < oneDay) {
+        const remaining = oneDay - (now - lastClaim);
+        return res.end(JSON.stringify({ error: 'Already claimed today', remainingMs: remaining }));
+      }
+      const rate = getCurrentRate();
+      const cap = 300000000;   // 300M airdrop cap
+      if (data.totalDistributed + rate > cap) {
+        return res.end(JSON.stringify({ error: 'Airdrop cap reached' }));
+      }
+      data.claims[accountId] = now;
+      data.totalDistributed += rate;
+      // Update user balance on server (if user data exists)
+      if (data.users[accountId]) {
+        data.users[accountId].balance = (data.users[accountId].balance || 0) + rate;
+      }
+      saveData();
+      res.end(JSON.stringify({ success: true, reward: rate, totalMiners: data.totalMiners, totalDistributed: data.totalDistributed }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Get total distributed ---
+  else if (req.method === 'GET' && req.url === '/total-distributed') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ totalDistributed: data.totalDistributed }));
+  }
+
+  // --- Save user data (cloud sync) ---
+  else if (req.method === 'POST' && req.url === '/save-user') {
+    try {
+      const { accountId, userData } = await parseBody(req);
+      if (!accountId || !userData) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Missing accountId or userData' }));
+      }
+      if (!data.users) data.users = {};
+      data.users[accountId] = {
+        ...userData,
+        serverTimestamp: Date.now()
+      };
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Load user data ---
+  else if (req.method === 'GET' && req.url.startsWith('/load-user')) {
+    const url = new URL(req.url, `http://localhost`);
+    const accountId = url.searchParams.get('accountId');
+    if (!accountId) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: 'Missing accountId' }));
+    }
+    const userData = (data.users && data.users[accountId]) || null;
+    const lastServerClaim = data.claims[accountId] || null;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ userData, lastServerClaim }));
+  }
+
+  // --- Task claim (telegram/twitter) ---
+  else if (req.method === 'POST' && req.url === '/task-claim') {
+    try {
+      const { accountId, taskType, amount } = await parseBody(req);
+      if (!accountId || !taskType || !amount) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Missing fields' }));
+      }
+      data.totalDistributed += amount;
+      if (data.users[accountId]) {
+        data.users[accountId].balance = (data.users[accountId].balance || 0) + amount;
+      }
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, totalDistributed: data.totalDistributed }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Boost claim (watch ad) ---
+  else if (req.method === 'POST' && req.url === '/boost-claim') {
+    try {
+      const { accountId, amount } = await parseBody(req);
+      if (!accountId || !amount) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Missing fields' }));
+      }
+      data.totalDistributed += amount;
+      if (data.users[accountId]) {
+        data.users[accountId].balance = (data.users[accountId].balance || 0) + amount;
+      }
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, totalDistributed: data.totalDistributed }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Server-side referral ---
+  else if (req.method === 'POST' && req.url === '/referral-add') {
+    try {
+      const { referrerCode, referredCode } = await parseBody(req);
+      if (!referrerCode || !referredCode || referrerCode.length !== 12 || referredCode.length !== 12) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Invalid codes' }));
+      }
+      if (referrerCode === referredCode) {
+        return res.end(JSON.stringify({ error: 'Self-referral not allowed' }));
+      }
+      const alreadyExists = data.referrals.some(
+        r => r.referrer === referrerCode && r.referred === referredCode
+      );
+      if (alreadyExists) {
+        return res.end(JSON.stringify({ error: 'Already connected' }));
+      }
+      const reward = getReferralReward();
+      data.totalDistributed += reward * 2;   // both referrer and referred receive reward
+
+      data.referrals.push({
+        referrer: referrerCode,
+        referred: referredCode,
+        timestamp: Date.now()
+      });
+      if (!data.referralRewards[referrerCode]) {
+        data.referralRewards[referrerCode] = 0;
+      }
+      data.referralRewards[referrerCode] += reward;
+      if (!data.referralFriends[referrerCode]) {
+        data.referralFriends[referrerCode] = [];
+      }
+      data.referralFriends[referrerCode].push({
+        referred: referredCode,
+        timestamp: Date.now()
+      });
+      // Add reward to referrer's server-side balance if known
+      // (Note: we don't have accountId mapping here, but it's optional)
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({
+        success: true,
+        reward: reward,
+        message: 'Referral added.'
+      }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Get referral info ---
+  else if (req.method === 'GET' && req.url.startsWith('/referral-info')) {
+    const url = new URL(req.url, `http://localhost`);
+    const code = url.searchParams.get('code');
+    if (!code || code.length !== 12) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ error: 'Invalid referral code' }));
+    }
+    const friends = data.referralFriends[code] || [];
+    const totalEarned = data.referralRewards[code] || 0;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      referralCode: code,
+      friends: friends,
+      totalEarned: totalEarned
+    }));
+  }
+
+  // ===================== STADIUM ENDPOINTS =====================
+  // --- Get stadium info (remaining supply) ---
+  if (req.method === 'GET' && req.url === '/stadium-info') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      sold: data.stadiumsSold,
+      total: 1000
+    }));
+  }
+
+  // --- Buy a stadium ---
+  else if (req.method === 'POST' && req.url === '/buy-stadium') {
+    try {
+      const { accountId } = await parseBody(req);
+      if (!accountId) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Missing accountId' }));
+      }
+
+      // Check if already owns a stadium
+      if (data.stadiumOwners[accountId]) {
+        return res.end(JSON.stringify({ error: 'You already own a stadium' }));
+      }
+
+      // Check supply
+      if (data.stadiumsSold >= 1000) {
+        return res.end(JSON.stringify({ error: 'All stadiums sold out' }));
+      }
+
+      // Check user data exists and has balance
+      const user = data.users[accountId];
+      if (!user || typeof user.balance !== 'number') {
+        return res.end(JSON.stringify({ error: 'User data not found. Please sync your wallet first.' }));
+      }
+
+      const price = 2000;
+      if (user.balance < price) {
+        return res.end(JSON.stringify({ error: 'Insufficient balance. You need 2000 $FOOT.' }));
+      }
+
+      // Deduct balance
+      user.balance -= price;
+      // Record purchase
+      data.stadiumsSold++;
+      data.stadiumOwners[accountId] = true;
+      // Note: totalDistributed doesn't change (purchase is a transfer, not minting)
+      saveData();
+
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, newBalance: user.balance, sold: data.stadiumsSold }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // ===================== ADMIN ENDPOINTS =====================
+  // --- Admin: adjust totalDistributed (add/subtract) ---
+  else if (req.method === 'POST' && req.url === '/admin-adjust-distribution') {
+    const url = new URL(req.url, `http://localhost`);
+    const key = url.searchParams.get('key');
+    if (key !== ADMIN_KEY) {
+      res.writeHead(403);
+      return res.end(JSON.stringify({ error: 'Forbidden' }));
+    }
+    try {
+      const { amount } = await parseBody(req);
+      if (typeof amount !== 'number') {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Invalid amount' }));
+      }
+      data.totalDistributed += amount;
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, totalDistributed: data.totalDistributed }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Admin: set totalDistributed directly ---
+  else if (req.method === 'POST' && req.url === '/admin-set-distribution') {
+    const url = new URL(req.url, `http://localhost`);
+    const key = url.searchParams.get('key');
+    if (key !== ADMIN_KEY) {
+      res.writeHead(403);
+      return res.end(JSON.stringify({ error: 'Forbidden' }));
+    }
+    try {
+      const { value } = await parseBody(req);
+      if (typeof value !== 'number' || value < 0) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Invalid value' }));
+      }
+      data.totalDistributed = value;
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, totalDistributed: data.totalDistributed }));
+    } catch (e) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Bad request' }));
+    }
+  }
+
+  // --- Admin: recover totalDistributed from user data ---
+  else if (req.method === 'POST' && req.url === '/admin-recover-distribution') {
+    const url = new URL(req.url, `http://localhost`);
+    const key = url.searchParams.get('key');
+    if (key !== ADMIN_KEY) {
+      res.writeHead(403);
+      return res.end(JSON.stringify({ error: 'Forbidden' }));
+    }
+    try {
+      let total = 0;
+      const users = data.users || {};
+      for (const accountId in users) {
+        const userData = users[accountId];
+        if (userData && typeof userData === 'object') {
+          total += (userData.balance || 0);
+          if (userData.attributes) {
+            total += getTotalSpent(userData.attributes);
+          }
         }
-        container.innerHTML = updates.map(u => `
-            <div class="section">
-                <div style="color:#ffaaaa; font-weight:bold;">${u.title}</div>
-                <small style="color:#ff8888;">${u.date}</small>
-                <p style="margin-top:0.5rem;">${u.content}</p>
-            </div>
-        `).join('');
+      }
+      data.totalDistributed = total;
+      saveData();
+      res.writeHead(200);
+      res.end(JSON.stringify({ success: true, totalDistributed: data.totalDistributed, note: 'Recovered from synced user data.' }));
+    } catch (e) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Internal error' }));
     }
+  }
 
-    async function updateUpdatesBadge() {
-        const updates = await fetchUpdates();
-        if (!updates.length) return;
-        const latestDate = updates[0].date;
-        const lastSeen = localStorage.getItem(LAST_SEEN_UPDATE_KEY);
-        const badge = document.getElementById('updatesBadge');
-        if (!badge) return;
-        if (!lastSeen || lastSeen < latestDate) {
-            badge.style.display = 'flex';
-            const count = lastSeen ? updates.filter(u => u.date > lastSeen).length : updates.length;
-            badge.innerText = count > 9 ? '9+' : count;
-        } else {
-            badge.style.display = 'none';
-        }
+  // --- Admin stats (protected) ---
+  else if (req.method === 'GET' && req.url.startsWith('/admin-stats')) {
+    const url = new URL(req.url, `http://localhost`);
+    const key = url.searchParams.get('key');
+    if (key !== ADMIN_KEY) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden' }));
     }
+    const stats = {
+      totalMiners: data.totalMiners,
+      totalDistributed: data.totalDistributed,
+      stadiumsSold: data.stadiumsSold,
+      minersCounted: data.minersCounted,
+      claims: data.claims,
+      users: data.users,
+      referrals: data.referrals,
+      referralRewards: data.referralRewards,
+      referralFriends: data.referralFriends
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(stats));
+  }
 
-    function markUpdatesSeen() {
-        fetchUpdates().then(updates => {
-            if (updates.length) {
-                localStorage.setItem(LAST_SEEN_UPDATE_KEY, updates[0].date);
-                updateUpdatesBadge();
-            }
-        });
-    }
+  // --- Fallback ---
+  else {
+    res.writeHead(404);
+    res.end('Not found');
+  }
+});
 
-    const updatesBtn = document.getElementById('updatesBtn');
-    updatesBtn.addEventListener('click', async () => {
-        const updates = await fetchUpdates();
-        renderUpdates(updates);
-        markUpdatesSeen();
-        showScreen('updatesScreen');
-        playGamepadSound();
-    });
-
-    // ---------- Boost (renamed from Bonus Ad) ----------
-    const boostBtn = document.getElementById('boostBtn');
-    const bonusCooldownText = document.getElementById('bonusCooldownText');
-    const adModal = document.getElementById('adModalOverlay');
-    const adCountdownText = document.getElementById('adCountdownText');
-    const adProgressBar = document.getElementById('adProgressBar');
-    const adClaimBtn = document.getElementById('adClaimBtn');
-    const adCloseBtn = document.getElementById('adCloseBtn');
-    let adTimer = null, adSecondsLeft = 10, adReady = false;
-
-    function updateBoostButton() {
-        const last = getStorage(LAST_BONUS_CLAIM_KEY);
-        const now = Date.now();
-        const oneHour = 3600000;
-        if (last && (now - parseInt(last)) < oneHour) {
-            boostBtn.disabled = true;
-            const remaining = oneHour - (now - parseInt(last));
-            const mins = Math.floor(remaining/60000);
-            const secs = Math.floor((remaining%60000)/1000);
-            bonusCooldownText.innerText = `Next boost in ${mins}m ${secs}s`;
-        } else {
-            boostBtn.disabled = false;
-            bonusCooldownText.innerText = '';
-        }
-    }
-
-    function startAdCountdown() {
-        adSecondsLeft = 10; adReady = false;
-        adClaimBtn.disabled = true; adClaimBtn.innerText = '⏳ Please wait...';
-        adCountdownText.innerText = adSecondsLeft;
-        adProgressBar.style.width = '100%';
-        adModal.classList.add('active');
-        adTimer = setInterval(() => {
-            adSecondsLeft--;
-            adCountdownText.innerText = adSecondsLeft;
-            adProgressBar.style.width = (adSecondsLeft/10*100)+'%';
-            if (adSecondsLeft <= 0) {
-                clearInterval(adTimer); adTimer = null;
-                adReady = true;
-                adClaimBtn.disabled = false;
-                adClaimBtn.innerText = '🎉 Claim 0.5 $FOOT';
-                adCountdownText.innerText = '0';
-                adProgressBar.style.width = '0%';
-            }
-        }, 1000);
-    }
-
-    function stopAdCountdown() { if (adTimer) { clearInterval(adTimer); adTimer = null; } adModal.classList.remove('active'); }
-
-    async function claimBoost() {
-        if (!adReady) return;
-        const amount = 0.5;
-        addToUserBalance(amount);
-        setStorage(LAST_BONUS_CLAIM_KEY, Date.now().toString());
-        updateMiningStats(); updateBoostButton();
-        stopAdCountdown();
-        // Notify server
-        try {
-            await fetch(`${API_BASE}/boost-claim`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ accountId: currentAccountId, amount }) });
-        } catch(e) {}
-        saveUserToCloud();
-        canvasConfetti({ particleCount:80, spread:60, origin:{y:0.7}, colors:['#228B22','#00ff00'] });
-        showModal('Boost claimed', '🎉 You earned 0.5 $FOOT! Come back in an hour for another.');
-        playGamepadSound();
-    }
-
-    boostBtn.addEventListener('click', ()=>{ if (!boostBtn.disabled) startAdCountdown(); });
-    adClaimBtn.addEventListener('click', claimBoost);
-    adCloseBtn.addEventListener('click', stopAdCountdown);
-    setInterval(updateBoostButton, 1000);
-    updateBoostButton();
-
-    // Auth flow
-    const loginForm = document.getElementById('loginForm');
-    const createForm = document.getElementById('createForm');
-    const restoreBackupForm = document.getElementById('restoreBackupForm');
-    const restoreSeedForm = document.getElementById('restoreSeedForm');
-
-    document.getElementById('showCreateWallet').addEventListener('click', ()=>{ loginForm.style.display='none'; createForm.style.display='block'; });
-    document.getElementById('showLoginFromCreate').addEventListener('click', ()=>{ createForm.style.display='none'; loginForm.style.display='block'; });
-    document.getElementById('showRestoreBackupLink').addEventListener('click', ()=>{ loginForm.style.display='none'; restoreBackupForm.style.display='block'; });
-    document.getElementById('showLoginFromBackup').addEventListener('click', ()=>{ restoreBackupForm.style.display='none'; loginForm.style.display='block'; });
-    document.getElementById('showSeedRestoreLink').addEventListener('click', ()=>{ loginForm.style.display='none'; restoreSeedForm.style.display='block'; });
-    document.getElementById('showLoginFromSeed').addEventListener('click', ()=>{ restoreSeedForm.style.display='none'; loginForm.style.display='block'; });
-
-    document.getElementById('createWalletBtn').addEventListener('click', async ()=>{
-        try {
-            const result = await createWallet();
-            saveSession(result.accountId);
-            initApp(result.accountId);
-            authScreen.classList.add('hidden'); appContainer.style.display='block';
-            document.getElementById('miningScreen').classList.remove('hidden');
-            customModalBox.innerHTML = `
-                <h3 style="color:#ffaaaa;margin-bottom:1rem;">Wallet Created 🎉</h3>
-                <div style="color:#ffcccc;">
-                    <p><strong>Your Account ID:</strong><br><span style="font-family:monospace;">${result.accountId}</span></p>
-                    <p style="margin-top:1rem;"><strong>Seedphrase (save safely):</strong><br><span style="font-family:monospace;word-break:break-all;">${result.seedphrase}</span></p>
-                    <p style="color:#ff8888;font-size:0.8rem;margin-top:0.5rem;">⚠️ Never share this with anyone.</p>
-                </div>
-                <button class="action-btn" id="confirmSeedphraseBtn">I've saved my seedphrase</button>
-                <button class="action-btn" style="background:transparent;border:1px solid #ff5555;color:#ffaaaa;margin-top:0.5rem;" onclick="document.getElementById('customModalOverlay').classList.remove('active')">Close</button>
-            `;
-            customModal.classList.add('active');
-            document.getElementById('confirmSeedphraseBtn').addEventListener('click', ()=>{
-                customModal.classList.remove('active');
-                showApkDownloadModal();
-            });
-            playGamepadSound();
-            await autoConnectReferral();
-        } catch(e) { document.getElementById('createError').innerText = 'Error creating wallet.'; }
-    });
-
-    document.getElementById('loginBtn').addEventListener('click', ()=>{
-        const accId = document.getElementById('loginAccountId').value.trim().toLowerCase();
-        if (!accId || accId.length!==12 || !/^[a-f0-9]+$/i.test(accId)) { document.getElementById('loginError').innerText='Invalid Account ID.'; return; }
-        const testKey = `${accId}_metafoot_balance`;
-        if (localStorage.getItem(testKey) === null) { document.getElementById('loginError').innerText='No wallet found for this ID.'; return; }
-        currentAccountId = accId;
-        currentReferralCode = getStorage(REF_CODE_V2_KEY) || secureRandomHex12();
-        if (!getStorage(REF_CODE_V2_KEY)) setStorage(REF_CODE_V2_KEY, currentReferralCode);
-        currentPlayerPublicId = derivePlayerPublicId(accId);
-        loadSeedphraseFromStorage();
-        saveSession(accId);
-        initApp(accId);
-        authScreen.classList.add('hidden'); appContainer.style.display='block';
-        document.getElementById('miningScreen').classList.remove('hidden');
-        playGamepadSound();
-    });
-
-    document.getElementById('restoreBackupBtn').addEventListener('click', async ()=>{
-        const text = document.getElementById('backupText').value.trim();
-        if (!text) { document.getElementById('backupError').innerText='Please paste your backup.'; return; }
-        const result = await restoreFromBackup(text);
-        if (result.error) { document.getElementById('backupError').innerText='Invalid backup data.'; return; }
-        currentPlayerPublicId = derivePlayerPublicId(result.accountId);
-        saveSession(result.accountId);
-        showLoadingModal();
-        try {
-            const cloudData = await loadUserFromCloud();
-            initApp(result.accountId, result.backup, cloudData);
-        } catch(e) {}
-        hideLoadingModal();
-        authScreen.classList.add('hidden'); appContainer.style.display='block'; document.getElementById('miningScreen').classList.remove('hidden'); playGamepadSound();
-        await autoConnectReferral();
-    });
-
-    document.getElementById('restoreSeedBtn').addEventListener('click', async ()=>{
-        const phrase = document.getElementById('seedRestoreInput').value.trim();
-        if (!phrase || phrase.split(/\s+/).length<12) { document.getElementById('seedRestoreError').innerText='Enter a valid 12-word seedphrase.'; return; }
-        try {
-            const accountId = await restoreFromSeedphrase(phrase);
-            currentPlayerPublicId = derivePlayerPublicId(accountId);
-            saveSession(accountId);
-            showLoadingModal();
-            let cloudData = null;
-            try { cloudData = await loadUserFromCloud(); } catch(e) {}
-            initApp(accountId, null, cloudData);
-            hideLoadingModal();
-            authScreen.classList.add('hidden'); appContainer.style.display='block'; document.getElementById('miningScreen').classList.remove('hidden'); playGamepadSound();
-            await autoConnectReferral();
-        } catch(e) { document.getElementById('seedRestoreError').innerText='Invalid seedphrase.'; }
-    });
-
-    function loadProfile() {
-        document.getElementById('profileUsername').value = getStorage('profile_username')||'';
-        document.getElementById('profileBalance').innerText = getUserBalance().toLocaleString()+' $FOOT';
-        const idEl = document.getElementById('profileAccountId');
-        idEl.textContent = currentAccountId||'—';
-        idEl.classList.add('blurred');
-        const refEl = document.getElementById('profileRefCode');
-        refEl.textContent = currentReferralCode||getStorage(REF_CODE_V2_KEY)||'—';
-        refEl.classList.add('blurred');
-    }
-
-    let profileIdRevealed = false;
-    document.getElementById('revealProfileIdBtn').addEventListener('click', ()=>{
-        const idEl = document.getElementById('profileAccountId');
-        profileIdRevealed = !profileIdRevealed;
-        if (profileIdRevealed) {
-            idEl.classList.remove('blurred');
-            document.getElementById('revealProfileIdBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
-        } else {
-            idEl.classList.add('blurred');
-            document.getElementById('revealProfileIdBtn').innerHTML = '<i class="fas fa-eye"></i>';
-        }
-    });
-
-    document.getElementById('copyProfileIdBtn').addEventListener('click', async ()=>{
-        if (!currentAccountId) { showModal('Error', 'No Account ID loaded.'); return; }
-        const success = await copyToClipboard(currentAccountId);
-        showModal(success ? 'Copied' : 'Manual Copy', success ? 'Account ID copied.' : `Select and copy: <span style="font-family:monospace;">${currentAccountId}</span>`);
-    });
-
-    let profileRefRevealed = false;
-    document.getElementById('revealProfileRefBtn').addEventListener('click', ()=>{
-        const refEl = document.getElementById('profileRefCode');
-        profileRefRevealed = !profileRefRevealed;
-        if (profileRefRevealed) {
-            refEl.classList.remove('blurred');
-            document.getElementById('revealProfileRefBtn').innerHTML = '<i class="fas fa-eye-slash"></i>';
-        } else {
-            refEl.classList.add('blurred');
-            document.getElementById('revealProfileRefBtn').innerHTML = '<i class="fas fa-eye"></i>';
-        }
-    });
-
-    document.getElementById('copyProfileRefBtn').addEventListener('click', async ()=>{
-        const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
-        if (!code) { showModal('Error', 'No referral code found.'); return; }
-        const success = await copyToClipboard(code);
-        showModal(success ? 'Copied' : 'Manual Copy', success ? 'Referral code copied.' : `Select and copy: <span style="font-family:monospace;">${code}</span>`);
-    });
-
-    document.getElementById('copySeedBtn').addEventListener('click', async ()=>{
-        if (!currentSeedphrase) { showModal('Error', 'Seedphrase not loaded.'); return; }
-        const success = await copyToClipboard(currentSeedphrase);
-        showModal(success ? 'Copied' : 'Manual Copy', success ? 'Seedphrase copied to clipboard.' : `Select and copy: <span style="font-family:monospace;">${currentSeedphrase}</span>`);
-    });
-
-    function initApp(accountId, backupData = null, preloadedCloudData = null) {
-        currentAccountId = accountId;
-        currentReferralCode = getStorage(REF_CODE_V2_KEY);
-        if (!currentReferralCode) { currentReferralCode = secureRandomHex12(); setStorage(REF_CODE_V2_KEY, currentReferralCode); }
-        currentPlayerPublicId = derivePlayerPublicId(accountId);
-        if (backupData) {
-            if (backupData.balance !== undefined) setUserBalance(backupData.balance);
-            if (backupData.attributes) setStorage('player_training_attrs', JSON.stringify(backupData.attributes));
-            if (backupData.username) setStorage('profile_username', backupData.username);
-            if (backupData.lastClaim) setStorage(LAST_CLAIM_KEY, backupData.lastClaim);
-            if (backupData.referrals) {
-                const currentRefs = getReferralList();
-                backupData.referrals.forEach(r => { if (!currentRefs.some(c=>c.referrer===r.referrer && c.referred===r.referred)) currentRefs.push(r); });
-                localStorage.setItem(REFERRALS_KEY, JSON.stringify(currentRefs));
-            }
-        }
-        loadSeedphraseFromStorage();
-        registerMinerGlobally(accountId);
-        const lastRole = getStorage('last_active_role')||'player';
-        setUIRole(lastRole);
-        updateMiningStats();
-        setUserBalance(getUserBalance());
-        const localTimeNow = parseInt(getStorage(LAST_CLAIM_KEY)) || 0;
-        if (localTimeNow > 0) updateCircularTimer();
-        if (timerInterval) clearInterval(timerInterval);
-        timerInterval = setInterval(updateCircularTimer, 1000);
-
-        const applyCloudData = (cloudData) => {
-            if (cloudData) {
-                const userData = cloudData.userData || {};
-                const localBalance = getUserBalance();
-                if (userData.balance !== undefined && userData.balance > localBalance) {
-                    setUserBalance(userData.balance);
-                }
-                if (userData.attributes) setStorage('player_training_attrs', JSON.stringify(userData.attributes));
-                if (userData.username) setStorage('profile_username', userData.username);
-                if (userData.referralCode) { setStorage(REF_CODE_V2_KEY, userData.referralCode); currentReferralCode = userData.referralCode; }
-                updateMiningStats();
-                refreshReferralInfo();
-                loadAttributes();
-                renderTrainingScreen();
-            }
-        };
-
-        if (preloadedCloudData) {
-            applyCloudData(preloadedCloudData);
-        } else {
-            loadUserFromCloud().then(applyCloudData);
-        }
-
-        refreshReferralInfo();
-        setInterval(refreshReferralInfo, 30000);
-        updateUpdatesBadge();
-        setInterval(updateUpdatesBadge, 60000);
-    }
-
-    // Music
-    const playlist = [
-        { name:"Stadium 1", url:"https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=stadium-crowd-7050.mp3" },
-        { name:"Stadium 2", url:"https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8f5b3c2.mp3?filename=stadium-crowd-6069.mp3" }
-    ];
-    let currentTrack=0, audio=null, playing=false;
-    function loadTrack(i){
-        if(audio){ audio.pause(); audio.removeEventListener('ended', onTrackEnd); }
-        const track = playlist[i%playlist.length];
-        audio = new Audio(track.url); audio.volume=0.35; audio.loop=false;
-        audio.addEventListener('ended', onTrackEnd);
-        audio.load();
-        if(playing) audio.play().catch(e=>{});
-    }
-    function onTrackEnd(){ if(!playing) return; currentTrack=(currentTrack+1)%playlist.length; loadTrack(currentTrack); }
-    function startPlaylist(){ if(audio && playing) return; playing=true; if(audio) audio.play().catch(()=>{}); else loadTrack(currentTrack); }
-    function stopPlaylist(){ playing=false; if(audio) audio.pause(); }
-    const musicBtn = document.getElementById('musicControl');
-    const musicIcon = document.getElementById('musicIcon');
-    const musicText = document.getElementById('musicText');
-    let musicActive = false;
-    musicBtn.addEventListener('click', ()=>{
-        if(musicActive){ stopPlaylist(); musicIcon.className='fas fa-volume-mute'; musicText.innerText='Play Music'; }
-        else { startPlaylist(); musicIcon.className='fas fa-music'; musicText.innerText='Mute'; }
-        musicActive=!musicActive;
-        playGamepadSound();
-    });
-
-    // Profile, backup, seed, etc.
-    document.getElementById('exportBackupBtn').addEventListener('click', async ()=>{
-        if (!currentAccountId || !currentSeedphrase) { showModal('Error','Wallet not loaded.'); return; }
-        const backup = {
-            seedphrase: currentSeedphrase,
-            balance: getUserBalance(),
-            attributes: getStorage('player_training_attrs')?JSON.parse(getStorage('player_training_attrs')):{},
-            referrals: getReferralList().filter(r=>r.referrer===currentReferralCode||r.referred===currentReferralCode),
-            username: getStorage('profile_username')||'',
-            lastClaim: getStorage(LAST_CLAIM_KEY),
-            referralCode: currentReferralCode,
-            timestamp: Date.now()
-        };
-        const jsonStr = JSON.stringify(backup);
-        const success = await copyToClipboard(jsonStr);
-        if (success) showModal('Backup Copied', 'Backup data copied to clipboard.');
-        else showModal('Backup (manual copy)', `<textarea readonly style="width:100%;height:100px;background:#1a1a2a;color:white;border:1px solid #ff5555;border-radius:1rem;padding:0.5rem;font-size:0.7rem;resize:none;">${jsonStr}</textarea><p style="margin-top:0.5rem;">Manual copy the text above.</p>`);
-        playGamepadSound();
-    });
-
-    document.getElementById('revealSeedBtn').addEventListener('click', ()=>{
-        if (!currentSeedphrase) { showModal('Error','Seedphrase not loaded.'); return; }
-        showModal('🔐 Your Seedphrase', `<div style="background:#1a1a2a;border:1px solid #ff5555;border-radius:1rem;padding:1rem;font-family:monospace;color:#ffaaaa;word-break:break-all;text-align:left;">${currentSeedphrase}</div><p style="color:#ff8888;font-size:0.8rem;">⚠️ Never share this.</p>`);
-        playGamepadSound();
-    });
-
-    // ---- Navigation event listeners ----
-    document.getElementById('menuBtn').addEventListener('click', ()=>{
-        document.getElementById('sideMenu').classList.toggle('open');
-        document.getElementById('menuOverlay').classList.toggle('active');
-    });
-    document.getElementById('menuOverlay').addEventListener('click', ()=>{
-        document.getElementById('sideMenu').classList.remove('open');
-        document.getElementById('menuOverlay').classList.remove('active');
-    });
-
-    document.getElementById('navHome').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('navTask').addEventListener('click', ()=> { showScreen('taskScreen'); renderTasks(); playGamepadSound(); });
-    document.getElementById('navEcosystem').addEventListener('click', ()=> { showScreen('ecosystemScreen'); playGamepadSound(); });
-    document.getElementById('navGamesApps').addEventListener('click', ()=> { showScreen('gamesAppsScreen'); playGamepadSound(); });
-
-    document.querySelector('[data-action="profile"]').addEventListener('click', ()=> { loadProfile(); showScreen('profileScreen'); playGamepadSound(); });
-    document.querySelector('[data-action="airdropDashboard"]').addEventListener('click', async ()=> {
-        showScreen('airdropDashboardScreen');
-        try {
-            const res = await fetch(`${API_BASE}/total-distributed`);
-            const data = await res.json();
-            const mined = data.totalDistributed;
-            document.getElementById('dashboardMined').innerText = mined.toLocaleString();
-            const percent = (mined / TOTAL_AIRDROP_CAP * 100).toFixed(2);
-            document.getElementById('dashboardPercent').innerText = `(${percent}% distributed)`;
-        } catch(e) {
-            document.getElementById('dashboardMined').innerText = 'N/A';
-        }
-        playGamepadSound();
-    });
-    document.querySelector('[data-action="whitepaper"]').addEventListener('click', ()=> {
-        document.getElementById('whitepaperContent').innerHTML = `
-            <h1>METAFOOT Whitepaper</h1>
-            <h2>The Football Metaverse Where Everyone Earns</h2>
-            <hr>
-            <h3>Executive Summary</h3>
-            <p>METAFOOT is a revolutionary football‑themed ecosystem that combines daily token mining, player training, team management, tournaments, and real‑world utility. The ecosystem is powered by the $FOOT token (total supply 500 million).</p>
-            <h3>Token Allocation</h3>
-            <table>
-                <tr><th>Allocation</th><th>%</th><th>Tokens</th></tr>
-                <tr><td>Airdrop</td><td>30%</td><td>150M</td></tr>
-                <tr><td>Pre‑sale</td><td>30%</td><td>150M</td></tr>
-            </table>
-            <p>🌍 <strong>The remaining 200 million coins will be allocated to:</strong></p>
-            <ul>
-                <li>👥 The team</li>
-                <li>💧 Liquidity</li>
-                <li>🏆 Staking</li>
-                <li>🛠️ Development</li>
-                <li>🌱 The ecosystem</li>
-            </ul>
-            <p>This distribution is designed to support the project's growth, stability, and long‑term development.</p>
-            <p>© METAFOOT</p>
-        `;
-        showScreen('whitepaperScreen'); playGamepadSound();
-    });
-    document.querySelector('[data-action="halving"]').addEventListener('click', ()=> {
-        const t=[0,15000,100000,500000,1000000], r=[4,2,1,0.5,0.25];
-        document.getElementById('halvingChartContainer').innerHTML = t.map((v,i)=>`<div class="chart-row"><div class="chart-label">${v===0?'0':(v>=1e6?'1M':(v>=1e3?(v/1e3).toFixed(0)+'k':v))}</div><div class="chart-bar-container"><div class="chart-bar" style="width:${(r[i]/4)*100}%;"></div></div><div class="chart-value">${r[i]} $FOOT</div></div>`).join('');
-        showScreen('halvingScreen');
-        playGamepadSound();
-    });
-    document.querySelector('[data-action="legal"]').addEventListener('click', ()=> { showScreen('legalScreen'); playGamepadSound(); });
-    document.querySelector('[data-action="lock"]').addEventListener('click', ()=> {
-        if(window._taskInterval) clearInterval(window._taskInterval);
-        clearSession();
-        currentAccountId = null;
-        appContainer.style.display = 'none';
-        authScreen.classList.remove('hidden');
-        document.getElementById('loginAccountId').value = '';
-        document.getElementById('loginError').innerText = '';
-    });
-
-    document.querySelectorAll('.info-card[data-screen]').forEach(card => {
-        card.addEventListener('click', ()=> {
-            const t = card.dataset.screen;
-            if (t==='stake') showScreen('stakeScreen');
-            else if (t==='pvp') showScreen('pvpScreen');
-            else if (t==='tournaments') showScreen('tournamentsScreen');
-            else if (t==='virtualCard') showScreen('virtualCardScreen');
-            playGamepadSound();
-        });
-    });
-    document.querySelectorAll('[id^="backFrom"]').forEach(b => b.addEventListener('click', ()=> { showScreen('ecosystemScreen'); playGamepadSound(); }));
-    document.getElementById('backFromUpdatesBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('backFromLegalBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('stakeBackHomeBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('pvpBackHomeBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('tournamentsBackHomeBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('backFromDashboardBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('backFromGamesAppsBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-    document.getElementById('backFromHalvingBtn').addEventListener('click', ()=> { showScreen('miningScreen'); playGamepadSound(); });
-
-    // Tasks (renderTasks)
-    function renderTasks() {
-        const now = Date.now(); const tgLast = parseInt(getStorage(TG_LAST_KEY))||0; const xLast = parseInt(getStorage(X_LAST_KEY))||0;
-        const tgReady = (now - tgLast) >= COOLDOWN_MS; const xReady = (now - xLast) >= COOLDOWN_MS;
-        const taskList = document.getElementById('dailyTasksList');
-        taskList.innerHTML = `<li><span>📱 Visit Telegram Channel</span><button class="task-btn" id="telegramTaskBtn" ${tgReady?'':'disabled'}>${tgReady?'0.6 $FOOT':formatCooldown(tgLast)}</button></li><li><span>🐦 Visit X (Twitter)</span><button class="task-btn" id="xTaskBtn" ${xReady?'':'disabled'}>${xReady?'0.6 $FOOT':formatCooldown(xLast)}</button></li>`;
-        function formatCooldown(last) { const remaining = COOLDOWN_MS - (now - last); const mins = Math.floor(remaining / 60000); const secs = Math.floor((remaining % 60000) / 1000); return `${mins}:${secs.toString().padStart(2,'0')}`; }
-        async function handleTask(taskType) {
-            const lastKey = taskType === 'telegram' ? TG_LAST_KEY : X_LAST_KEY;
-            const last = parseInt(getStorage(lastKey))||0;
-            if (now - last < COOLDOWN_MS) return;
-            const amount = 0.6;
-            if (taskType === 'telegram') window.open('https://t.me/metafoott','_blank');
-            else {
-                const start = Date.now();
-                window.location.href = 'twitter://user?screen_name=METAFOOTT';
-                setTimeout(()=>{ if(Date.now()-start<2000) window.open('https://x.com/METAFOOTT','_blank'); },500);
-            }
-            setStorage(lastKey, now);
-            addToUserBalance(amount);
-            updateMiningStats();
-            playGamepadSound();
-            // Notify server
-            try {
-                await fetch(`${API_BASE}/task-claim`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ accountId: currentAccountId, taskType, amount }) });
-            } catch(e){}
-            renderTasks();
-            saveUserToCloud();
-        }
-        document.getElementById('telegramTaskBtn')?.addEventListener('click', () => { if(tgReady) handleTask('telegram'); });
-        document.getElementById('xTaskBtn')?.addEventListener('click', () => { if(xReady) handleTask('twitter'); });
-        if(window._taskInterval) clearInterval(window._taskInterval);
-        window._taskInterval = setInterval(renderTasks, 1000);
-    }
-
-    // Simple global intervals
-    setInterval(refreshGlobalStats, 30000);
-    setInterval(saveUserToCloud, 300000);
-    refreshGlobalStats();
-
-    const authScreen = document.getElementById('authScreen');
-    const appContainer = document.getElementById('appContainer');
-    const savedAccountId = loadSession();
-    if (savedAccountId && localStorage.getItem(ENCRYPTED_SEED_KEY)) {
-        currentAccountId = savedAccountId;
-        currentPlayerPublicId = derivePlayerPublicId(savedAccountId);
-        loadSeedphraseFromStorage();
-        initApp(currentAccountId);
-        authScreen.classList.add('hidden'); appContainer.style.display='block';
-        document.getElementById('miningScreen').classList.remove('hidden');
-    } else {
-        authScreen.classList.remove('hidden'); appContainer.style.display='none';
-    }
-})();
-</script>
-</body>
-</html>
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
