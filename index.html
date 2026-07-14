@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>METAFOOT — ID Login</title>
 
+    <!-- ====== Monetag Verification ====== -->
+    <meta name="monetag" content="f40316bdff12e113b8f826d77cae8c55">
+
     <!-- ====== Referral Preview Meta Tags (Social Sharing) ====== -->
     <meta property="og:title" content="Join me on METAFOOT ⚽">
     <meta property="og:description" content="Early miners shape the future. $FOOT brings football management, player/team renting, virtual card, autonomous cars, virtual machine to deploy smart contracts into one ecosystem. Secure your spot now.">
@@ -851,6 +854,23 @@
         <div class="loader"></div>
         <p style="color:#ffcccc; margin-top:1rem;">Fetching your data from the cloud.</p>
     </div>
+</div>
+
+<!-- Service Worker Registration -->
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js')
+    .then(function(reg) {
+        console.log('Service Worker registered with scope:', reg.scope);
+    }).catch(function(err) {
+        console.log('Service Worker registration failed:', err);
+    });
+}
+</script>
+
+<!-- Monetag In‑Page Push Banner (fixed at bottom) -->
+<div style="position:fixed; bottom:0; left:0; width:100%; z-index:9999; pointer-events:auto; background:transparent;">
+  <script>(function(s){s.dataset.zone='11284217',s.src='https://nap5k.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
 </div>
 
 <script>
@@ -1972,8 +1992,10 @@
             const last = parseInt(getStorage(lastKey))||0;
             if (now - last < COOLDOWN_MS) return;
             const amount = 0.6;
-            if (taskType === 'telegram') window.open('https://t.me/metafoott','_blank');
-            else {
+            if (taskType === 'telegram') {
+                // Always open the web version – guaranteed to work
+                window.open('https://t.me/metafoott', '_blank');
+            } else {
                 const start = Date.now();
                 window.location.href = 'twitter://user?screen_name=METAFOOTT';
                 setTimeout(()=>{ if(Date.now()-start<2000) window.open('https://x.com/METAFOOTT','_blank'); },500);
