@@ -608,7 +608,7 @@
                 <div class="info-card" data-screen="stake"><div class="eco-logo"><i class="fas fa-link"></i> <i class="fas fa-cube"></i></div><div class="eco-title">Stake $FOOT</div><div class="eco-desc">Lock tokens · Earn passive yield · Secure the network</div></div>
                 <div class="info-card" data-screen="virtualCard"><div class="eco-logo"><i class="fas fa-credit-card"></i></div><div class="eco-title">$FOOT Virtual Card</div><div class="eco-desc">Spend your mined $FOOT anywhere · Real‑world utility</div></div>
                 <div class="info-card" id="visionCard"><div class="eco-logo"><i class="fas fa-chalkboard-user"></i></div><div class="eco-title">What METAFOOT is building</div><div class="eco-desc">Our mission, roadmap, and vision</div></div>
-                <!-- Stadium Card -->
+                <!-- Stadium Card (updated dynamically) -->
                 <div class="info-card stadium-card-highlight" id="stadiumCard">
                     <div class="eco-logo"><i class="fas fa-futbol"></i></div>
                     <div class="eco-title">🏟️ METAFOOT Stadium</div>
@@ -628,14 +628,15 @@
         </div>
     </div>
 
-    <!-- Airdrop Dashboard Screen -->
+    <!-- Airdrop Dashboard Screen (updated with four stats) -->
     <div id="airdropDashboardScreen" class="screen hidden">
         <div style="width:100%;max-width:500px;margin:0 auto;">
             <div class="dashboard-card">
                 <h2 style="color:#ffaaaa;"><i class="fas fa-chart-pie"></i> Airdrop Dashboard</h2>
-                <div class="dashboard-stat">Total Pool: <span class="dashboard-big">300,000,000</span> $FOOT</div>
-                <div class="dashboard-stat">Mined: <span class="dashboard-big" id="dashboardMined">0</span> $FOOT</div>
-                <div class="dashboard-stat" style="font-size:0.9rem;color:#ff8888;" id="dashboardPercent">(0.00% distributed)</div>
+                <div class="dashboard-stat">Airdrop Remaining: <span class="dashboard-big" id="dashboardAirdropRemaining">300,000,000</span> $FOOT</div>
+                <div class="dashboard-stat">Total Coins Held: <span class="dashboard-big" id="dashboardTotalCoinsHeld">0</span> $FOOT</div>
+                <div class="dashboard-stat">Total Spent on Training: <span class="dashboard-big" id="dashboardTotalTrainingSpent">0</span> $FOOT</div>
+                <div class="dashboard-stat">Stadiums Sold: <span class="dashboard-big" id="dashboardStadiumsSold">0</span> / 1,000</div>
                 <button class="back-btn" id="backFromDashboardBtn">Back to Home</button>
             </div>
         </div>
@@ -1015,16 +1016,82 @@
         } catch(e) { updateMiningStats(); }
     }
 
+    // ====== MODIFIED: fetch global stats from admin-stats and compute the four values ======
     async function refreshGlobalStats() {
         try {
-            const [minersRes, distRes] = await Promise.all([
-                fetch(`${API_BASE}/total-miners`),
-                fetch(`${API_BASE}/total-distributed`)
-            ]);
-            localStorage.setItem(ACTIVE_MINERS_KEY, (await minersRes.json()).totalMiners);
-            localStorage.setItem(TOTAL_DISTRIBUTED_KEY, (await distRes.json()).totalDistributed);
-        } catch(e) {}
+            const res = await fetch(`${API_BASE}/admin-stats`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Update total miners (used by halving chart)
+            localStorage.setItem(ACTIVE_MINERS_KEY, data.totalMiners);
+            // Store total distributed (still used elsewhere)
+            localStorage.setItem(TOTAL_DISTRIBUTED_KEY, data.totalDistributed);
+
+            // Compute total coins held from users
+            let totalBalance = 0;
+            let totalTrainingSpent = 0;
+            const users = data.users || {};
+            for (const user of Object.values(users)) {
+                totalBalance += user.balance || 0;
+                if (user.attributes) {
+                    totalTrainingSpent += calcTotalSpentGlobal(user.attributes);
+                }
+            }
+            localStorage.setItem('metafoot_total_coins_held', totalBalance);
+            localStorage.setItem('metafoot_total_training_spent', totalTrainingSpent);
+
+            // Airdrop remaining
+            const remaining = TOTAL_AIRDROP_CAP - (data.totalDistributed || 0);
+            localStorage.setItem('metafoot_airdrop_remaining', remaining);
+
+            // Stadiums sold
+            localStorage.setItem('metafoot_stadiums_sold', data.stadiumsSold || 0);
+        } catch (e) {
+            console.warn('Could not fetch admin-stats', e);
+        }
         updateMiningStats();
+        updateDashboardStats();
+        updateStadiumBadge();
+    }
+
+    // Helper: calculate total training cost for a given attributes object (same logic as admin)
+    function calcTotalSpentGlobal(attrs) {
+        let total = 0;
+        for (let attr in attrs) {
+            let level = attrs[attr] || 0;
+            for (let i = 0; i < level; i++) {
+                total += getUpgradeCostGlobal(i);
+            }
+        }
+        return total;
+    }
+    function getUpgradeCostGlobal(level) {
+        return BASE_COST * Math.pow(2, Math.floor(level / TIER_SIZE));
+    }
+
+    function updateDashboardStats() {
+        const remaining = localStorage.getItem('metafoot_airdrop_remaining') || TOTAL_AIRDROP_CAP;
+        const totalCoinsHeld = localStorage.getItem('metafoot_total_coins_held') || 0;
+        const totalTrainingSpent = localStorage.getItem('metafoot_total_training_spent') || 0;
+        const stadiumsSold = localStorage.getItem('metafoot_stadiums_sold') || 0;
+
+        document.getElementById('dashboardAirdropRemaining').innerText = Number(remaining).toLocaleString();
+        document.getElementById('dashboardTotalCoinsHeld').innerText = Number(totalCoinsHeld).toLocaleString();
+        document.getElementById('dashboardTotalTrainingSpent').innerText = Number(totalTrainingSpent).toLocaleString();
+        document.getElementById('dashboardStadiumsSold').innerText = Number(stadiumsSold) + ' / 1,000';
+    }
+
+    function updateStadiumBadge() {
+        const sold = parseInt(localStorage.getItem('metafoot_stadiums_sold')) || 0;
+        const remaining = STADIUM_TOTAL - sold;
+        const badgeEl = document.getElementById('stadiumRemainingBadge');
+        if (badgeEl) {
+            badgeEl.textContent = remaining + ' left';
+            if (remaining <= 0) badgeEl.textContent = 'SOLD OUT';
+        }
+        // Also update the local stadiumSold variable for buy function
+        stadiumSold = sold;
     }
 
     async function claimReward() {
@@ -1882,18 +1949,9 @@
     document.getElementById('navGamesApps').addEventListener('click', ()=> { showScreen('gamesAppsScreen'); playGamepadSound(); });
 
     document.querySelector('[data-action="profile"]').addEventListener('click', ()=> { loadProfile(); showScreen('profileScreen'); playGamepadSound(); });
-    document.querySelector('[data-action="airdropDashboard"]').addEventListener('click', async ()=> {
+    document.querySelector('[data-action="airdropDashboard"]').addEventListener('click', ()=> {
         showScreen('airdropDashboardScreen');
-        try {
-            const res = await fetch(`${API_BASE}/total-distributed`);
-            const data = await res.json();
-            const mined = data.totalDistributed;
-            document.getElementById('dashboardMined').innerText = mined.toLocaleString();
-            const percent = (mined / TOTAL_AIRDROP_CAP * 100).toFixed(2);
-            document.getElementById('dashboardPercent').innerText = `(${percent}% distributed)`;
-        } catch(e) {
-            document.getElementById('dashboardMined').innerText = 'N/A';
-        }
+        // The values are already set by updateDashboardStats (called by refreshGlobalStats)
         playGamepadSound();
     });
     document.querySelector('[data-action="whitepaper"]').addEventListener('click', ()=> {
