@@ -385,6 +385,115 @@
             color: #ffaaaa;
         }
 
+        /* ========== Airdrop Dashboard Cards ========== */
+        .airdrop-dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            width: 100%;
+            max-width: 600px;
+            margin: 1rem auto;
+        }
+        .metric-card {
+            background: rgba(5,10,22,0.7);
+            border-radius: 1.8rem;
+            padding: 1.5rem 1rem;
+            border: 2px solid rgba(255,50,50,0.5);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-align: center;
+            backdrop-filter: blur(4px);
+        }
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 20px rgba(255,85,85,0.4);
+            border-color: #ff5555;
+        }
+        .metric-card i {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #ff5555;
+        }
+        .metric-card .metric-title {
+            font-size: 0.9rem;
+            color: #ffcccc;
+            margin-bottom: 0.3rem;
+        }
+        .metric-card .metric-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffd700, #ffaa00);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        /* ========== Dashboard Modal (animated) ========== */
+        .dashboard-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3001;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+        .dashboard-modal-overlay.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .dashboard-modal-box {
+            background: #0f0f1a;
+            border: 2px solid #ff5555;
+            border-radius: 2rem;
+            padding: 2rem 1.5rem;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            transform: scale(0.85);
+            transition: transform 0.3s ease;
+            box-shadow: 0 0 30px rgba(255,50,50,0.4);
+        }
+        .dashboard-modal-overlay.active .dashboard-modal-box {
+            transform: scale(1);
+        }
+        .dashboard-modal-box h2 {
+            color: #ffaaaa;
+            margin-bottom: 1rem;
+        }
+        .dashboard-modal-box .modal-big-number {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffd700, #ff5555);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin: 1rem 0;
+        }
+        .dashboard-modal-box .modal-details {
+            color: #ffcccc;
+            font-size: 0.95rem;
+            margin: 1rem 0;
+            line-height: 1.5;
+        }
+        .dashboard-modal-box .modal-close-btn {
+            background: linear-gradient(95deg, #ff3333, #990000);
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 50px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+
         /* Stadium purchase specific */
         .stadium-supply-bar {
             background: #1a1a2a;
@@ -431,6 +540,12 @@
             .blockchain-modal { width: 130px; height: 130px; }
             .mining-rate { font-size: 1.5rem; }
             .app-title { font-size: 1.8rem; }
+            .airdrop-dashboard {
+                grid-template-columns: 1fr;
+                max-width: 320px;
+                margin: 0 auto;
+            }
+            .metric-card .metric-value { font-size: 1.5rem; }
         }
     </style>
 </head>
@@ -608,7 +723,7 @@
                 <div class="info-card" data-screen="stake"><div class="eco-logo"><i class="fas fa-link"></i> <i class="fas fa-cube"></i></div><div class="eco-title">Stake $FOOT</div><div class="eco-desc">Lock tokens · Earn passive yield · Secure the network</div></div>
                 <div class="info-card" data-screen="virtualCard"><div class="eco-logo"><i class="fas fa-credit-card"></i></div><div class="eco-title">$FOOT Virtual Card</div><div class="eco-desc">Spend your mined $FOOT anywhere · Real‑world utility</div></div>
                 <div class="info-card" id="visionCard"><div class="eco-logo"><i class="fas fa-chalkboard-user"></i></div><div class="eco-title">What METAFOOT is building</div><div class="eco-desc">Our mission, roadmap, and vision</div></div>
-                <!-- Stadium Card (updated dynamically) -->
+                <!-- Stadium Card -->
                 <div class="info-card stadium-card-highlight" id="stadiumCard">
                     <div class="eco-logo"><i class="fas fa-futbol"></i></div>
                     <div class="eco-title">🏟️ METAFOOT Stadium</div>
@@ -628,17 +743,37 @@
         </div>
     </div>
 
-    <!-- Airdrop Dashboard Screen (updated with four stats) -->
+    <!-- ========== AIRDROP DASHBOARD (redesigned) ========== -->
     <div id="airdropDashboardScreen" class="screen hidden">
-        <div style="width:100%;max-width:500px;margin:0 auto;">
-            <div class="dashboard-card">
-                <h2 style="color:#ffaaaa;"><i class="fas fa-chart-pie"></i> Airdrop Dashboard</h2>
-                <div class="dashboard-stat">Airdrop Remaining: <span class="dashboard-big" id="dashboardAirdropRemaining">300,000,000</span> $FOOT</div>
-                <div class="dashboard-stat">Total Coins Held: <span class="dashboard-big" id="dashboardTotalCoinsHeld">0</span> $FOOT</div>
-                <div class="dashboard-stat">Total Spent on Training: <span class="dashboard-big" id="dashboardTotalTrainingSpent">0</span> $FOOT</div>
-                <div class="dashboard-stat">Stadiums Sold: <span class="dashboard-big" id="dashboardStadiumsSold">0</span> / 1,000</div>
-                <button class="back-btn" id="backFromDashboardBtn">Back to Home</button>
+        <div style="width:100%; max-width:650px; margin:0 auto; text-align:center;">
+            <h1 style="color:#ffaaaa; margin-bottom:1.5rem;"><i class="fas fa-chart-pie"></i> Airdrop Dashboard</h1>
+            <div class="airdrop-dashboard">
+                <!-- Airdrop Remaining -->
+                <div class="metric-card" data-metric="remaining">
+                    <i class="fas fa-database"></i>
+                    <div class="metric-title">Airdrop Remaining</div>
+                    <div class="metric-value" id="metricRemaining">300,000,000</div>
+                </div>
+                <!-- Total Coins Held -->
+                <div class="metric-card" data-metric="coinsHeld">
+                    <i class="fas fa-wallet"></i>
+                    <div class="metric-title">Total Coins Held</div>
+                    <div class="metric-value" id="metricCoinsHeld">0</div>
+                </div>
+                <!-- Total Spent on Training -->
+                <div class="metric-card" data-metric="trainingSpent">
+                    <i class="fas fa-dumbbell"></i>
+                    <div class="metric-title">Total Spent on Training</div>
+                    <div class="metric-value" id="metricTrainingSpent">0</div>
+                </div>
+                <!-- Stadiums Sold -->
+                <div class="metric-card" data-metric="stadiumsSold">
+                    <i class="fas fa-futbol"></i>
+                    <div class="metric-title">Stadiums Sold</div>
+                    <div class="metric-value" id="metricStadiumsSold">0 / 1,000</div>
+                </div>
             </div>
+            <button class="back-btn" id="backFromDashboardBtn" style="margin-top:2rem;">Back to Home</button>
         </div>
     </div>
 
@@ -854,6 +989,13 @@
     </div>
 </div>
 
+<!-- ========== Airdrop Metric Modal (animated) ========== -->
+<div id="dashboardModalOverlay" class="dashboard-modal-overlay">
+    <div class="dashboard-modal-box" id="dashboardModalBox">
+        <!-- filled dynamically -->
+    </div>
+</div>
+
 <script>
 (function(){
     // ============ API Base URL ============
@@ -1016,19 +1158,17 @@
         } catch(e) { updateMiningStats(); }
     }
 
-    // ====== MODIFIED: fetch global stats from admin-stats and compute the four values ======
+    // ====== FRONTEND‑COMPUTED GLOBAL STATS (from admin‑stats) ======
     async function refreshGlobalStats() {
         try {
             const res = await fetch(`${API_BASE}/admin-stats`);
             if (!res.ok) return;
             const data = await res.json();
 
-            // Update total miners (used by halving chart)
             localStorage.setItem(ACTIVE_MINERS_KEY, data.totalMiners);
-            // Store total distributed (still used elsewhere)
             localStorage.setItem(TOTAL_DISTRIBUTED_KEY, data.totalDistributed);
 
-            // Compute total coins held from users
+            // Compute totals from users
             let totalBalance = 0;
             let totalTrainingSpent = 0;
             const users = data.users || {};
@@ -1041,21 +1181,20 @@
             localStorage.setItem('metafoot_total_coins_held', totalBalance);
             localStorage.setItem('metafoot_total_training_spent', totalTrainingSpent);
 
-            // Airdrop remaining
-            const remaining = TOTAL_AIRDROP_CAP - (data.totalDistributed || 0);
-            localStorage.setItem('metafoot_airdrop_remaining', remaining);
+            const totalMined = totalBalance + totalTrainingSpent;
+            const airdropRemaining = TOTAL_AIRDROP_CAP - totalMined;
+            localStorage.setItem('metafoot_airdrop_remaining', airdropRemaining);
 
-            // Stadiums sold
             localStorage.setItem('metafoot_stadiums_sold', data.stadiumsSold || 0);
+            stadiumSold = data.stadiumsSold || 0;  // update for purchase logic
         } catch (e) {
             console.warn('Could not fetch admin-stats', e);
         }
         updateMiningStats();
-        updateDashboardStats();
+        updateDashboardCards();
         updateStadiumBadge();
     }
 
-    // Helper: calculate total training cost for a given attributes object (same logic as admin)
     function calcTotalSpentGlobal(attrs) {
         let total = 0;
         for (let attr in attrs) {
@@ -1070,16 +1209,16 @@
         return BASE_COST * Math.pow(2, Math.floor(level / TIER_SIZE));
     }
 
-    function updateDashboardStats() {
+    function updateDashboardCards() {
         const remaining = localStorage.getItem('metafoot_airdrop_remaining') || TOTAL_AIRDROP_CAP;
-        const totalCoinsHeld = localStorage.getItem('metafoot_total_coins_held') || 0;
-        const totalTrainingSpent = localStorage.getItem('metafoot_total_training_spent') || 0;
+        const coinsHeld = localStorage.getItem('metafoot_total_coins_held') || 0;
+        const trainingSpent = localStorage.getItem('metafoot_total_training_spent') || 0;
         const stadiumsSold = localStorage.getItem('metafoot_stadiums_sold') || 0;
 
-        document.getElementById('dashboardAirdropRemaining').innerText = Number(remaining).toLocaleString();
-        document.getElementById('dashboardTotalCoinsHeld').innerText = Number(totalCoinsHeld).toLocaleString();
-        document.getElementById('dashboardTotalTrainingSpent').innerText = Number(totalTrainingSpent).toLocaleString();
-        document.getElementById('dashboardStadiumsSold').innerText = Number(stadiumsSold) + ' / 1,000';
+        document.getElementById('metricRemaining').innerText = Number(remaining).toLocaleString();
+        document.getElementById('metricCoinsHeld').innerText = Number(coinsHeld).toLocaleString();
+        document.getElementById('metricTrainingSpent').innerText = Number(trainingSpent).toLocaleString();
+        document.getElementById('metricStadiumsSold').innerText = Number(stadiumsSold) + ' / 1,000';
     }
 
     function updateStadiumBadge() {
@@ -1090,10 +1229,88 @@
             badgeEl.textContent = remaining + ' left';
             if (remaining <= 0) badgeEl.textContent = 'SOLD OUT';
         }
-        // Also update the local stadiumSold variable for buy function
-        stadiumSold = sold;
     }
 
+    // ====== MODAL LOGIC (FIXED) ======
+    function openDashboardModal(metric) {
+        const overlay = document.getElementById('dashboardModalOverlay');
+        const box = document.getElementById('dashboardModalBox');
+        let html = '';
+        const coinsHeld = Number(localStorage.getItem('metafoot_total_coins_held')) || 0;
+        const trainingSpent = Number(localStorage.getItem('metafoot_total_training_spent')) || 0;
+        const remaining = Number(localStorage.getItem('metafoot_airdrop_remaining')) || TOTAL_AIRDROP_CAP;
+        const stadiumsSold = Number(localStorage.getItem('metafoot_stadiums_sold')) || 0;
+
+        if (metric === 'remaining') {
+            const totalMined = coinsHeld + trainingSpent;
+            html = `
+                <h2>Airdrop Remaining</h2>
+                <div class="modal-big-number">${remaining.toLocaleString()}</div>
+                <div class="modal-details">
+                    <p>Total Pool: 300,000,000 $FOOT</p>
+                    <p>Coins Held: ${coinsHeld.toLocaleString()}</p>
+                    <p>Spent on Training: ${trainingSpent.toLocaleString()}</p>
+                    <p><strong>300,000,000 - (${coinsHeld.toLocaleString()} + ${trainingSpent.toLocaleString()}) = ${remaining.toLocaleString()}</strong></p>
+                </div>
+            `;
+        } else if (metric === 'coinsHeld') {
+            html = `
+                <h2>Total Coins Held</h2>
+                <div class="modal-big-number">${coinsHeld.toLocaleString()}</div>
+                <div class="modal-details">
+                    <p>Sum of all user balances currently held in wallets.</p>
+                </div>
+            `;
+        } else if (metric === 'trainingSpent') {
+            html = `
+                <h2>Total Spent on Training</h2>
+                <div class="modal-big-number">${trainingSpent.toLocaleString()}</div>
+                <div class="modal-details">
+                    <p>Total $FOOT spent by all players to upgrade attributes.</p>
+                </div>
+            `;
+        } else if (metric === 'stadiumsSold') {
+            const remainingStadiums = STADIUM_TOTAL - stadiumsSold;
+            html = `
+                <h2>Stadiums Sold</h2>
+                <div class="modal-big-number">${stadiumsSold} / ${STADIUM_TOTAL}</div>
+                <div class="stadium-supply-bar" style="margin: 1rem 0;">
+                    <div class="stadium-supply-fill" style="width: ${(stadiumsSold/STADIUM_TOTAL)*100}%;"></div>
+                </div>
+                <div class="modal-details">
+                    <p>Remaining: ${remainingStadiums}</p>
+                </div>
+            `;
+        }
+
+        box.innerHTML = html + '<button class="modal-close-btn">Close</button>';
+        overlay.classList.add('active');
+
+        // Add event listener to the new close button (after innerHTML is set)
+        const closeBtn = box.querySelector('.modal-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeDashboardModal);
+        }
+    }
+
+    function closeDashboardModal() {
+        document.getElementById('dashboardModalOverlay').classList.remove('active');
+    }
+
+    // Allow clicking the overlay background to close modal
+    document.getElementById('dashboardModalOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeDashboardModal();
+    });
+
+    // Attach click handlers to metric cards
+    document.querySelectorAll('.metric-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const metric = card.dataset.metric;
+            if (metric) openDashboardModal(metric);
+        });
+    });
+
+    // ====== CLAIM REWARD (unchanged, uses server) ======
     async function claimReward() {
         if (!currentAccountId) return;
         try {
@@ -1951,7 +2168,7 @@
     document.querySelector('[data-action="profile"]').addEventListener('click', ()=> { loadProfile(); showScreen('profileScreen'); playGamepadSound(); });
     document.querySelector('[data-action="airdropDashboard"]').addEventListener('click', ()=> {
         showScreen('airdropDashboardScreen');
-        // The values are already set by updateDashboardStats (called by refreshGlobalStats)
+        // Update values are already set by refreshGlobalStats
         playGamepadSound();
     });
     document.querySelector('[data-action="whitepaper"]').addEventListener('click', ()=> {
