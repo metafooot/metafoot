@@ -991,11 +991,19 @@
                             <span>📢 ${ann.title}</span>
                             ${alreadyClaimed
                                 ? '<button class="task-btn" disabled>Claimed</button>'
-                                : `<button class="task-btn" onclick="claimAnnouncement('${doc.id}', '${ann.link || ''}')">View & Earn 0.6 $FOOT</button>`
+                                : `<button class="task-btn claim-ann-btn" data-id="${doc.id}" data-link="${ann.link || ''}">View & Earn 0.6 $FOOT</button>`
                             }
                         </div>
                     `;
                     container.appendChild(div);
+                });
+                // Event delegation for claim buttons
+                container.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.claim-ann-btn');
+                    if (!btn) return;
+                    const id = btn.dataset.id;
+                    const link = btn.dataset.link;
+                    claimAnnouncement(id, link);
                 });
             } catch (e) {
                 console.error('Failed to load announcements:', e);
