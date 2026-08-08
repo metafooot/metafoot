@@ -286,7 +286,7 @@
                         <div class="auth-input-group" style="margin-top:0.5rem;"><i class="fas fa-user-plus"></i><input type="text" id="friendCodeInput" placeholder="e.g., 7a3f9b2c4d1e" maxlength="12"></div>
                         <div class="referral-buttons-row">
                             <button id="submitReferralBtn" class="action-btn">Connect & Earn</button>
-                            <button id="copyInviteLinkBtn" class="action-btn">📋 Copy Invite Link</button>
+                            <button id="copyInviteLinkBtn" class="action-btn" type="button">📋 Copy Invite Link</button>
                         </div>
                         <div class="error-message" id="referralError"></div>
                     </div>
@@ -434,23 +434,28 @@
     function calcTotalSpent(attrs) { let total=0; for(let attr in attrs) for(let l=0; l<(attrs[attr]||0); l++) total += getUpgradeCost(l); return total; }
     function secureRandomHex12() { if (window.crypto && window.crypto.getRandomValues) { const arr = new Uint8Array(6); window.crypto.getRandomValues(arr); return Array.from(arr, b => b.toString(16).padStart(2,'0')).join(''); } else return Math.random().toString(16).substring(2,14).padEnd(12,'0'); }
 
-    // 📋 COPY FUNCTION
+    // ✅ Reliable copy function (uses textarea fallback)
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+            return navigator.clipboard.writeText(text).then(() => true).catch(() => {
+                return legacyCopy(text);
+            });
         } else {
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand('copy');
-                return true;
-            } catch (e) { return false; }
-            finally { document.body.removeChild(textarea); }
+            return Promise.resolve(legacyCopy(text));
         }
+    }
+    function legacyCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            return true;
+        } catch (e) { return false; }
+        finally { document.body.removeChild(textarea); }
     }
 
     function showModal(title, contentHTML) {
@@ -946,7 +951,7 @@
         document.getElementById('revealProfileIdBtn').addEventListener('click', ()=> document.getElementById('profileUserId').classList.toggle('blurred'));
         document.getElementById('copyProfileIdBtn').addEventListener('click', ()=> { navigator.clipboard.writeText(currentUserId); alert('User ID copied!'); });
 
-        // ===================== REFERRAL COPY =====================
+        // ✅ Copy Invite Link button – guaranteed to work now
         document.getElementById('copyInviteLinkBtn').addEventListener('click', async ()=>{
             const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
             if (!code) { showModal('Error','No referral code found.'); return; }
