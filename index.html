@@ -333,7 +333,6 @@
     <!-- Airdrop Dashboard (redesigned) -->
     <div id="airdropDashboardScreen" class="screen hidden">
         <div class="airdrop-premium">
-            <!-- Animated energy logo -->
             <div class="airdrop-logo-wrapper">
                 <div class="airdrop-ring"></div>
                 <div class="airdrop-ring"></div>
@@ -434,6 +433,25 @@
     function getUpgradeCost(level) { return BASE_COST * Math.pow(2, Math.floor(level/TIER_SIZE)); }
     function calcTotalSpent(attrs) { let total=0; for(let attr in attrs) for(let l=0; l<(attrs[attr]||0); l++) total += getUpgradeCost(l); return total; }
     function secureRandomHex12() { if (window.crypto && window.crypto.getRandomValues) { const arr = new Uint8Array(6); window.crypto.getRandomValues(arr); return Array.from(arr, b => b.toString(16).padStart(2,'0')).join(''); } else return Math.random().toString(16).substring(2,14).padEnd(12,'0'); }
+
+    // 📋 COPY FUNCTION
+    function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                return true;
+            } catch (e) { return false; }
+            finally { document.body.removeChild(textarea); }
+        }
+    }
 
     function showModal(title, contentHTML) {
         customModalBox.innerHTML = `<h3 style="color:#ffaaaa;margin-bottom:1rem;">${title}</h3><div>${contentHTML}</div><button class="action-btn" onclick="document.getElementById('customModalOverlay').classList.remove('active')">Close</button>`;
@@ -927,6 +945,15 @@
         });
         document.getElementById('revealProfileIdBtn').addEventListener('click', ()=> document.getElementById('profileUserId').classList.toggle('blurred'));
         document.getElementById('copyProfileIdBtn').addEventListener('click', ()=> { navigator.clipboard.writeText(currentUserId); alert('User ID copied!'); });
+
+        // ===================== REFERRAL COPY =====================
+        document.getElementById('copyInviteLinkBtn').addEventListener('click', async ()=>{
+            const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
+            if (!code) { showModal('Error','No referral code found.'); return; }
+            const inviteUrl = `${window.location.origin}${window.location.pathname}?ref=${code}`;
+            const success = await copyToClipboard(inviteUrl);
+            showModal(success?'Copied':'Manual Copy', success?'Invite link copied to clipboard!':`Select and copy: <span style="font-family:monospace;">${inviteUrl}</span>`);
+        });
 
         // ===================== TASK OPENING FIX =====================
         function openAppOrWeb(deepLink, webUrl) {
