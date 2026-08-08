@@ -57,7 +57,21 @@
         .header-controls-row { width:100%; padding:0.2rem 1rem 0.6rem; display:flex; justify-content:space-between; align-items:center; pointer-events:auto; }
         .left-controls { display:flex; align-items:center; gap:0.6rem; }
         .right-controls { display:flex; align-items:center; gap:0.6rem; }
-        .menu-btn { background:rgba(255,255,255,0.06); border-radius:40px; padding:0.5rem 0.7rem; border:1px solid #ff5555; color:#ffaaaa; font-size:1.2rem; cursor:pointer; position:relative; z-index:101; }
+        /* ✅ Hamburger button – now clearly visible */
+        .menu-btn {
+            background:#ff3333 !important;
+            border-radius:50px;
+            padding:0.6rem 0.8rem;
+            border:2px solid #ff8888;
+            color:white;
+            font-size:1.4rem;
+            cursor:pointer;
+            position:relative;
+            z-index:101;
+            box-shadow:0 0 10px rgba(255,50,50,0.6);
+            min-width:44px;
+            text-align:center;
+        }
         .wallet-display { background:rgba(0,0,0,0.7); border-radius:40px; padding:0.4rem 0.8rem; border:1px solid #ff5555; color:#ffcccc; font-size:0.85rem; font-weight:bold; display:flex; align-items:center; gap:0.4rem; }
         .username-display { background:rgba(0,0,0,0.6); border-radius:40px; padding:0.4rem 0.8rem; border:1px solid #ff5555; color:#ffaaaa; font-size:0.85rem; font-weight:bold; }
         .screen { padding-top:102px; padding-bottom:80px; }
@@ -166,6 +180,8 @@
         .airdrop-mined-value { font-size:3rem; font-weight:800; background:linear-gradient(135deg,#ffd700,#ff8c00); -webkit-background-clip:text; background-clip:text; color:transparent; margin:0.5rem 0; }
         .airdrop-percent { font-size:1.2rem; color:#ff8888; margin-bottom:1.5rem; }
         .airdrop-subtitle { color:#ffaaaa; font-size:0.95rem; margin-bottom:0.5rem; }
+        /* Task announcement row */
+        .task-announcement { background:rgba(255,85,85,0.05); border-radius:12px; padding:0.5rem; margin:0.4rem 0; }
     </style>
 </head>
 <body>
@@ -286,7 +302,7 @@
                         <div class="auth-input-group" style="margin-top:0.5rem;"><i class="fas fa-user-plus"></i><input type="text" id="friendCodeInput" placeholder="e.g., 7a3f9b2c4d1e" maxlength="12"></div>
                         <div class="referral-buttons-row">
                             <button id="submitReferralBtn" class="action-btn">Connect & Earn</button>
-                            <button id="copyInviteLinkBtn" class="action-btn" type="button">📋 Copy Invite Link</button>
+                            <button id="copyInviteLinkBtn" class="action-btn">📋 Copy Invite Link</button>
                         </div>
                         <div class="error-message" id="referralError"></div>
                     </div>
@@ -305,7 +321,12 @@
         <div class="info-screen">
             <div class="info-card" style="cursor:default;">
                 <div class="info-title"><i class="fas fa-tasks"></i> Daily Social Tasks</div>
-                <div class="info-content"><ul class="task-list" id="dailyTasksList"></ul><p style="margin-top:1rem;font-size:0.8rem;color:#ffaaaa;">⏱️ Cooldown: 30 minutes between claims</p></div>
+                <div class="info-content">
+                    <ul class="task-list" id="dailyTasksList"></ul>
+                    <!-- New Announcement Tasks -->
+                    <div id="announcementTasksContainer"></div>
+                    <p style="margin-top:1rem;font-size:0.8rem;color:#ffaaaa;">⏱️ Cooldown: 30 minutes between claims</p>
+                </div>
             </div>
         </div>
     </div>
@@ -434,15 +455,10 @@
     function calcTotalSpent(attrs) { let total=0; for(let attr in attrs) for(let l=0; l<(attrs[attr]||0); l++) total += getUpgradeCost(l); return total; }
     function secureRandomHex12() { if (window.crypto && window.crypto.getRandomValues) { const arr = new Uint8Array(6); window.crypto.getRandomValues(arr); return Array.from(arr, b => b.toString(16).padStart(2,'0')).join(''); } else return Math.random().toString(16).substring(2,14).padEnd(12,'0'); }
 
-    // ✅ Reliable copy function (uses textarea fallback)
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(text).then(() => true).catch(() => {
-                return legacyCopy(text);
-            });
-        } else {
-            return Promise.resolve(legacyCopy(text));
-        }
+            return navigator.clipboard.writeText(text).then(() => true).catch(() => { return legacyCopy(text); });
+        } else { return Promise.resolve(legacyCopy(text)); }
     }
     function legacyCopy(text) {
         const textarea = document.createElement('textarea');
@@ -451,10 +467,7 @@
         textarea.style.opacity = '0';
         document.body.appendChild(textarea);
         textarea.select();
-        try {
-            document.execCommand('copy');
-            return true;
-        } catch (e) { return false; }
+        try { document.execCommand('copy'); return true; } catch (e) { return false; }
         finally { document.body.removeChild(textarea); }
     }
 
@@ -496,18 +509,13 @@
             showModal('Username taken', 'Please choose a different username.');
             return false;
         }
-        if (oldUsername) {
-            try { await db.collection('usernames').doc(oldUsername).delete(); } catch(e) {}
-        }
+        if (oldUsername) { try { await db.collection('usernames').doc(oldUsername).delete(); } catch(e) {} }
         try {
             await reserveUsername(currentUserId, newUsername);
             setStorage('profile_username', newUsername);
             document.getElementById('usernameDisplay').innerText = newUsername;
             return true;
-        } catch(e) {
-            showModal('Error', 'Could not change username. Please try again.');
-            return false;
-        }
+        } catch(e) { showModal('Error', 'Could not change username. Please try again.'); return false; }
     }
 
     function updateAmbassadorBadge(count) {
@@ -529,9 +537,7 @@
                 gold: 'Gold Ambassador (300+ refs)',
                 team: 'Team Ambassador (500+ refs)'
             }[tier];
-        } else {
-            badge.style.display = 'none';
-        }
+        } else { badge.style.display = 'none'; }
     }
 
     async function refreshReferralBadge() {
@@ -557,9 +563,7 @@
             }
             const available = await isUsernameAvailable(username);
             if (!available) { err.innerText = 'Username already taken.'; return; }
-            try {
-                await auth.createUserWithEmailAndPassword(email, password);
-            } catch(e) { err.innerText = e.message; }
+            try { await auth.createUserWithEmailAndPassword(email, password); } catch(e) { err.innerText = e.message; }
         });
 
         document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -619,6 +623,7 @@
                 if (data.username) setStorage('profile_username', data.username);
                 if (data.referralCode) setStorage(REF_CODE_V2_KEY, data.referralCode);
                 if (data.hasStadium) setStorage('hasStadium', 'true');
+                if (data.claimedAnnouncements) setStorage('claimedAnnouncements', JSON.stringify(data.claimedAnnouncements));
                 return data;
             }
             return null;
@@ -627,6 +632,7 @@
         async function saveUserToFirestore() {
             if (!currentUserId) return;
             const userRef = db.collection('users').doc(currentUserId);
+            const claimed = getStorage('claimedAnnouncements');
             const userData = {
                 uid: currentUserId,
                 email: auth.currentUser.email,
@@ -636,6 +642,7 @@
                 lastClaim: parseInt(getStorage(LAST_CLAIM_KEY)) || 0,
                 referralCode: currentReferralCode || getStorage(REF_CODE_V2_KEY) || '',
                 hasStadium: getStorage('hasStadium') === 'true',
+                claimedAnnouncements: claimed ? JSON.parse(claimed) : []
             };
             await userRef.set(userData, { merge: true });
         }
@@ -951,7 +958,7 @@
         document.getElementById('revealProfileIdBtn').addEventListener('click', ()=> document.getElementById('profileUserId').classList.toggle('blurred'));
         document.getElementById('copyProfileIdBtn').addEventListener('click', ()=> { navigator.clipboard.writeText(currentUserId); alert('User ID copied!'); });
 
-        // ✅ Copy Invite Link button – guaranteed to work now
+        // Copy Invite Link
         document.getElementById('copyInviteLinkBtn').addEventListener('click', async ()=>{
             const code = currentReferralCode || getStorage(REF_CODE_V2_KEY);
             if (!code) { showModal('Error','No referral code found.'); return; }
@@ -960,19 +967,87 @@
             showModal(success?'Copied':'Manual Copy', success?'Invite link copied to clipboard!':`Select and copy: <span style="font-family:monospace;">${inviteUrl}</span>`);
         });
 
-        // ===================== TASK OPENING FIX =====================
-        function openAppOrWeb(deepLink, webUrl) {
-            const start = Date.now();
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = deepLink;
-            document.body.appendChild(iframe);
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-                if (Date.now() - start < 2000) {
-                    window.open(webUrl, '_blank');
+        // ===================== ANNOUNCEMENT TASKS =====================
+        async function renderAnnouncementTasks() {
+            const container = document.getElementById('announcementTasksContainer');
+            if (!container) return;
+            try {
+                const userDoc = await db.collection('users').doc(currentUserId).get();
+                const claimed = userDoc.exists ? (userDoc.data().claimedAnnouncements || []) : [];
+
+                const snap = await db.collection('announcements')
+                    .where('active', '==', true)
+                    .orderBy('createdAt', 'desc')
+                    .get();
+
+                container.innerHTML = '';
+                snap.forEach(doc => {
+                    const ann = doc.data();
+                    const alreadyClaimed = claimed.includes(doc.id);
+                    const div = document.createElement('div');
+                    div.className = 'task-announcement';
+                    div.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>📢 ${ann.title}</span>
+                            ${alreadyClaimed
+                                ? '<button class="task-btn" disabled>Claimed</button>'
+                                : `<button class="task-btn" onclick="claimAnnouncement('${doc.id}', '${ann.link || ''}')">View & Earn 0.6 $FOOT</button>`
+                            }
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                console.error('Failed to load announcements:', e);
+                container.innerHTML = '<p class="error">Could not load announcements.</p>';
+            }
+        }
+
+        // Claim an announcement reward
+        async function claimAnnouncement(announcementId, link) {
+            if (!currentUserId) return;
+            const userRef = db.collection('users').doc(currentUserId);
+            const statsRef = db.collection('global').doc('stats');
+
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const userDoc = await transaction.get(userRef);
+                    if (!userDoc.exists) throw new Error('User not found');
+                    const data = userDoc.data();
+                    const claimed = data.claimedAnnouncements || [];
+                    if (claimed.includes(announcementId)) throw new Error('Already claimed');
+
+                    const newBalance = (data.balance || 0) + 0.6;
+                    claimed.push(announcementId);
+                    transaction.set(userRef, {
+                        balance: newBalance,
+                        claimedAnnouncements: claimed
+                    }, { merge: true });
+
+                    transaction.set(statsRef, {
+                        totalDistributed: firebase.firestore.FieldValue.increment(0.6)
+                    }, { merge: true });
+
+                    return newBalance;
+                }).then(() => {
+                    addToUserBalance(0.6);
+                    updateWalletDisplay();
+                    setStorage('claimedAnnouncements', JSON.stringify(
+                        [...(JSON.parse(getStorage('claimedAnnouncements') || '[]')), announcementId]
+                    ));
+                    renderAnnouncementTasks();
+                    showModal('Reward Earned', '🎉 You earned 0.6 $FOOT from the announcement!');
+                    if (link) {
+                        window.open(link, '_blank');
+                    }
+                });
+            } catch (e) {
+                if (e.message === 'Already claimed') {
+                    showModal('Already Claimed', 'You already claimed this reward.');
+                } else {
+                    showModal('Error', e.message);
                 }
-            }, 600);
+            }
         }
 
         function renderTasks() {
@@ -998,6 +1073,22 @@
                 saveUserToFirestore(); updateMiningStats(); renderTasks();
                 openAppOrWeb('twitter://user?screen_name=METAFOOTT', 'https://x.com/METAFOOTT');
             });
+            // Render dynamic announcements
+            renderAnnouncementTasks();
+        }
+
+        function openAppOrWeb(deepLink, webUrl) {
+            const start = Date.now();
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = deepLink;
+            document.body.appendChild(iframe);
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+                if (Date.now() - start < 2000) {
+                    window.open(webUrl, '_blank');
+                }
+            }, 600);
         }
 
         // Referral submit
