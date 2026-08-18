@@ -57,7 +57,6 @@
         .header-controls-row { width:100%; padding:0.2rem 1rem 0.6rem; display:flex; justify-content:space-between; align-items:center; pointer-events:auto; }
         .left-controls { display:flex; align-items:center; gap:0.6rem; }
         .right-controls { display:flex; align-items:center; gap:0.6rem; }
-        /* ✅ Hamburger button – now clearly visible */
         .menu-btn {
             background:#ff3333 !important;
             border-radius:50px;
@@ -166,7 +165,6 @@
         .loader { border:4px solid rgba(255,85,85,0.2); border-top:4px solid #ff5555; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:1rem auto; }
         @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
         .apk-download-btn { background:linear-gradient(95deg,#ff3333,#990000); border:none; padding:0.9rem 1.5rem; border-radius:60px; font-weight:bold; color:white; font-size:1.1rem; text-decoration:none; display:inline-block; width:100%; margin:0.8rem 0; cursor:pointer; box-shadow:0 0 15px rgba(255,50,50,0.5); }
-        /* Premium Airdrop Dashboard */
         .airdrop-premium { width:100%; max-width:420px; margin:0 auto; text-align:center; }
         .airdrop-logo-wrapper { position:relative; width:200px; height:200px; margin:1rem auto 2rem; }
         .airdrop-logo-core { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:3.5rem; color:#ffd700; filter:drop-shadow(0 0 12px #ffd700); z-index:2; animation:corePulse 1.8s ease-in-out infinite; }
@@ -180,8 +178,20 @@
         .airdrop-mined-value { font-size:3rem; font-weight:800; background:linear-gradient(135deg,#ffd700,#ff8c00); -webkit-background-clip:text; background-clip:text; color:transparent; margin:0.5rem 0; }
         .airdrop-percent { font-size:1.2rem; color:#ff8888; margin-bottom:1.5rem; }
         .airdrop-subtitle { color:#ffaaaa; font-size:0.95rem; margin-bottom:0.5rem; }
-        /* Task announcement row */
         .task-announcement { background:rgba(255,85,85,0.05); border-radius:12px; padding:0.5rem; margin:0.4rem 0; }
+        /* New signup referral banner */
+        .referral-signup-banner {
+            background:rgba(255,85,85,0.1);
+            border:1px solid #ff5555;
+            border-radius:12px;
+            padding:0.5rem 1rem;
+            margin-bottom:0.5rem;
+            text-align:center;
+            color:#ffaaaa;
+            font-size:0.85rem;
+            display:none;
+        }
+        .referral-signup-banner.show { display:block; }
     </style>
 </head>
 <body>
@@ -204,6 +214,9 @@
             </div>
         </div>
         <div id="signUpForm" class="auth-form" style="display:none;">
+            <div class="referral-signup-banner" id="referralSignupBanner">
+                <i class="fas fa-link"></i> Referred by: <span id="signupReferralCodeDisplay">—</span>
+            </div>
             <div class="auth-input-group"><i class="fas fa-user"></i><input type="text" id="signUpUsername" placeholder="Username (3-20 chars)" maxlength="20"></div>
             <div class="auth-input-group"><i class="fas fa-envelope"></i><input type="email" id="signUpEmail" placeholder="Email"></div>
             <div class="auth-input-group"><i class="fas fa-lock"></i><input type="password" id="signUpPassword" placeholder="Password (min 6 characters)"></div>
@@ -298,17 +311,17 @@
                         <button id="copyRefCodeBtn" class="copy-id-btn"><i class="fas fa-copy"></i> Copy</button>
                     </div>
                     <div class="referral-box">
-                        <p><strong>Connect with a Friend</strong><br>Enter their referral code below to earn <span style="color:#ffaaaa;">2 $FOOT</span> instantly.</p>
+                        <p><strong>Connect with a Friend</strong><br>Enter their referral code below. The reward will be credited after admin approval.</p>
                         <div class="auth-input-group" style="margin-top:0.5rem;"><i class="fas fa-user-plus"></i><input type="text" id="friendCodeInput" placeholder="e.g., 7a3f9b2c4d1e" maxlength="12"></div>
                         <div class="referral-buttons-row">
-                            <button id="submitReferralBtn" class="action-btn">Connect & Earn</button>
+                            <button id="submitReferralBtn" class="action-btn">Submit for Approval</button>
                             <button id="copyInviteLinkBtn" class="action-btn">📋 Copy Invite Link</button>
                         </div>
                         <div class="error-message" id="referralError"></div>
                     </div>
                     <div class="referral-box">
-                        <p><strong>Your Referral Rewards</strong><br><span style="font-size:1.5rem;font-weight:bold;color:#ffaaaa;" id="pendingReferralAmount">0</span> $FOOT earned</p>
-                        <p><strong>Friends Connected:</strong> <span id="referralCount">0</span></p>
+                        <p><strong>Your Referral Rewards</strong><br>Referrals are pending admin approval. Once approved, you'll receive 2 $FOOT each.</p>
+                        <p><strong>Approved Referrals:</strong> <span id="approvedReferralCount">0</span></p>
                         <div class="friends-list" id="friendsListContainer"></div>
                     </div>
                 </div>
@@ -323,7 +336,6 @@
                 <div class="info-title"><i class="fas fa-tasks"></i> Daily Social Tasks</div>
                 <div class="info-content">
                     <ul class="task-list" id="dailyTasksList"></ul>
-                    <!-- New Announcement Tasks -->
                     <div id="announcementTasksContainer"></div>
                     <p style="margin-top:1rem;font-size:0.8rem;color:#ffaaaa;">⏱️ Cooldown: 30 minutes between claims</p>
                 </div>
@@ -443,14 +455,15 @@
     const customModal = document.getElementById('customModalOverlay');
     const customModalBox = document.getElementById('customModalBox');
 
-    // ------------------ Referral URL handling ------------------
-    (function captureReferralFromUrl() {
+    // Capture referral code from URL
+    function captureReferralFromUrl() {
         const params = new URLSearchParams(window.location.search);
         const ref = params.get('ref');
         if (ref && /^[a-f0-9]{12}$/i.test(ref)) {
             localStorage.setItem('pending_ref_code', ref);
         }
-    })();
+    }
+    captureReferralFromUrl();
 
     function userKey(key) { return currentUserId ? `${currentUserId}_${key}` : key; }
     function getStorage(key) { return localStorage.getItem(userKey(key)); }
@@ -491,6 +504,18 @@
         document.getElementById('signUpForm').style.display = mode==='signup' ? 'block' : 'none';
         document.getElementById('forgotPasswordForm').style.display = mode==='forgot' ? 'block' : 'none';
         document.getElementById('authModeLabel').innerText = mode==='signup' ? 'Create your account' : mode==='forgot' ? 'Reset your password' : 'Log in with your email';
+        // If showing signup, display referral code if present
+        if (mode === 'signup') {
+            const pendingRef = localStorage.getItem('pending_ref_code');
+            const banner = document.getElementById('referralSignupBanner');
+            const codeDisplay = document.getElementById('signupReferralCodeDisplay');
+            if (pendingRef) {
+                banner.classList.add('show');
+                codeDisplay.innerText = pendingRef;
+            } else {
+                banner.classList.remove('show');
+            }
+        }
     }
 
     // ===================== USERNAME & BADGE =====================
@@ -527,35 +552,30 @@
         } catch(e) { showModal('Error', 'Could not change username. Please try again.'); return false; }
     }
 
-    function updateAmbassadorBadge(count) {
+    function updateAmbassadorBadge(tier) {
         const badge = document.getElementById('ambassadorBadge');
         if (!badge) return;
-        let tier = null;
-        if (count >= 500) tier = 'team';
-        else if (count >= 300) tier = 'gold';
-        else if (count >= 100) tier = 'silver';
-        else if (count >= 50) tier = 'bronze';
-        else if (count >= 20) tier = 'lite';
-        if (tier) {
+        if (tier && tier !== 'none') {
             badge.style.display = 'inline-flex';
             badge.className = 'ambassador-badge ' + tier;
             badge.title = {
-                lite: 'Lite Ambassador (20+ refs)',
-                bronze: 'Bronze Ambassador (50+ refs)',
-                silver: 'Silver Ambassador (100+ refs)',
-                gold: 'Gold Ambassador (300+ refs)',
-                team: 'Team Ambassador (500+ refs)'
-            }[tier];
-        } else { badge.style.display = 'none'; }
+                lite: 'Lite Ambassador',
+                bronze: 'Bronze Ambassador',
+                silver: 'Silver Ambassador',
+                gold: 'Gold Ambassador',
+                team: 'Team Ambassador'
+            }[tier] || 'Ambassador';
+        } else {
+            badge.style.display = 'none';
+        }
     }
 
     async function refreshReferralBadge() {
-        if (!currentReferralCode) return;
-        const doc = await db.collection('referrals').doc(currentReferralCode).get();
-        if (doc.exists) {
-            const data = doc.data();
-            const count = data.friends ? data.friends.length : 0;
-            updateAmbassadorBadge(count);
+        if (!currentUserId) return;
+        const userDoc = await db.collection('users').doc(currentUserId).get();
+        if (userDoc.exists) {
+            const tier = userDoc.data().ambassadorTier || null;
+            updateAmbassadorBadge(tier);
         }
     }
 
@@ -633,6 +653,7 @@
                 if (data.referralCode) setStorage(REF_CODE_V2_KEY, data.referralCode);
                 if (data.hasStadium) setStorage('hasStadium', 'true');
                 if (data.claimedAnnouncements) setStorage('claimedAnnouncements', JSON.stringify(data.claimedAnnouncements));
+                if (data.ambassadorTier) setStorage('ambassador_tier', data.ambassadorTier);
                 return data;
             }
             return null;
@@ -754,28 +775,19 @@
             } catch (e) { showModal('Purchase failed', e.message); }
         }
 
-        async function addReferralFirestore(referrerCode, referredCode) {
-            if (!referredCode || referrerCode === referredCode) throw new Error('Self-referral not allowed');
-            const referrerRef = db.collection('referrals').doc(referrerCode);
-            await db.runTransaction(async (transaction) => {
-                const doc = await transaction.get(referrerRef);
-                const data = doc.exists ? doc.data() : { friends:[], totalEarned:0 };
-                if (data.friends.some(f => f.accountId === referredCode)) throw new Error('Already connected');
-                const reward = 2;
-                const newFriends = [...data.friends, { accountId: referredCode, timestamp: Date.now() }];
-                transaction.set(referrerRef, { friends: newFriends, totalEarned: (data.totalEarned||0)+reward }, { merge: true });
-                const referredRef = db.collection('users').doc(referredCode);
-                const referredDoc = await transaction.get(referredRef);
-                if (referredDoc.exists) {
-                    transaction.set(referredRef, { balance: (referredDoc.data().balance||0)+reward }, { merge: true });
-                } else {
-                    // New user – create doc with reward
-                    transaction.set(referredRef, {
-                        uid: referredCode,
-                        email: auth.currentUser?.email || '',
-                        balance: reward
-                    }, { merge: true });
-                }
+        // ===================== REFERRAL (PENDING) =====================
+        async function submitReferralRequest(referrerCode, referredUserId) {
+            if (!referredUserId || referrerCode === currentReferralCode) throw new Error('Invalid referral');
+            const existing = await db.collection('pendingReferrals')
+                .where('referredUserId', '==', referredUserId)
+                .where('status', 'in', ['pending', 'approved'])
+                .get();
+            if (!existing.empty) throw new Error('You already have a referral pending or approved.');
+            await db.collection('pendingReferrals').add({
+                referrerCode: referrerCode,
+                referredUserId: referredUserId,
+                timestamp: Date.now(),
+                status: 'pending'
             });
         }
 
@@ -866,10 +878,10 @@
             setUIRole(lastRole);
             setInterval(saveUserToFirestore, 300000);
 
-            // Refresh referral badge
+            // Refresh badge
             refreshReferralBadge();
 
-            // Auto-connect referral if pending
+            // Auto-submit pending referral if any
             await attemptAutoReferral();
 
             const summaries = ["Rental system","Train player","How you earn","Tournaments","League system","Knowledge challenge","Virtual Card","Football Academy","METAFOOT game"];
@@ -884,25 +896,23 @@
             buildSlides(); resetTimer();
         }
 
-        // Auto-connect referral from URL
+        // Auto-submit pending referral from URL
         async function attemptAutoReferral() {
             const pendingRef = localStorage.getItem('pending_ref_code');
             if (!pendingRef || !currentUserId) return;
-            localStorage.removeItem('pending_ref_code'); // remove to avoid retries
-            if (pendingRef === currentReferralCode) return; // self-referral guard
+            // Avoid self-referral
+            if (pendingRef === currentReferralCode) {
+                localStorage.removeItem('pending_ref_code');
+                return;
+            }
             try {
-                await addReferralFirestore(pendingRef, currentUserId);
-                // Fetch the updated balance from Firestore
-                const userDoc = await db.collection('users').doc(currentUserId).get();
-                const newBalance = userDoc.exists ? (userDoc.data().balance || 0) : getUserBalance();
-                setUserBalance(newBalance);
-                updateWalletDisplay();
-                refreshReferralBadge();
-                showModal('Referral Connected!', '🎉 You earned 2 $FOOT for being referred!');
-            } catch(e) {
-                if (e.message !== 'Already connected') {
-                    console.error('Auto referral failed:', e);
-                }
+                await submitReferralRequest(pendingRef, currentUserId);
+                localStorage.removeItem('pending_ref_code');
+                showModal('Referral Submitted', 'Your referral request has been submitted for admin approval. You will receive 2 $FOOT once approved.');
+            } catch (e) {
+                console.warn('Auto referral failed:', e.message);
+                // If already exists, just remove the pending code to avoid retries
+                localStorage.removeItem('pending_ref_code');
             }
         }
 
@@ -954,7 +964,7 @@
         document.getElementById('menuBtn').addEventListener('click', ()=>{ document.getElementById('sideMenu').classList.toggle('open'); document.getElementById('menuOverlay').classList.toggle('active'); });
         document.getElementById('menuOverlay').addEventListener('click', ()=>{ document.getElementById('sideMenu').classList.remove('open'); document.getElementById('menuOverlay').classList.remove('active'); });
         document.getElementById('navHome').addEventListener('click', ()=> showScreen('miningScreen'));
-        document.getElementById('navReferral').addEventListener('click', ()=> { showScreen('referralScreen'); refreshReferralBadge(); });
+        document.getElementById('navReferral').addEventListener('click', async ()=> { showScreen('referralScreen'); document.getElementById('refCodeDisplay').textContent = currentReferralCode; refreshReferralBadge(); });
         document.getElementById('navTask').addEventListener('click', ()=> { showScreen('taskScreen'); renderTasks(); });
         document.getElementById('navEcosystem').addEventListener('click', ()=> showScreen('ecosystemScreen'));
         document.querySelector('[data-action="profile"]').addEventListener('click', ()=> {
@@ -1040,7 +1050,6 @@
                     `;
                     container.appendChild(div);
                 });
-                // Event delegation for claim buttons
                 container.addEventListener('click', (e) => {
                     const btn = e.target.closest('.claim-ann-btn');
                     if (!btn) return;
@@ -1054,7 +1063,6 @@
             }
         }
 
-        // Claim an announcement reward
         async function claimAnnouncement(announcementId, link) {
             if (!currentUserId) return;
             const userRef = db.collection('users').doc(currentUserId);
@@ -1124,7 +1132,6 @@
                 saveUserToFirestore(); updateMiningStats(); renderTasks();
                 openAppOrWeb('twitter://user?screen_name=METAFOOTT', 'https://x.com/METAFOOTT');
             });
-            // Render dynamic announcements
             renderAnnouncementTasks();
         }
 
@@ -1142,21 +1149,15 @@
             }, 600);
         }
 
-        // Referral submit (manual)
+        // Referral submit (pending) - manual
         document.getElementById('submitReferralBtn').addEventListener('click', async ()=> {
             const friendCode = document.getElementById('friendCodeInput').value.trim();
             const err = document.getElementById('referralError');
             if (!friendCode || friendCode.length!==12 || !/^[a-f0-9]+$/i.test(friendCode)) { err.innerText='Invalid referral code.'; return; }
             if (friendCode === currentReferralCode) { err.innerText='You cannot refer yourself.'; return; }
             try {
-                await addReferralFirestore(friendCode, currentUserId);
-                // Fetch updated balance from Firestore
-                const userDoc = await db.collection('users').doc(currentUserId).get();
-                const newBalance = userDoc.exists ? (userDoc.data().balance || 0) : getUserBalance();
-                setUserBalance(newBalance);
-                updateWalletDisplay();
-                refreshReferralBadge();
-                err.innerText = ''; showModal('Connected & Rewarded', '✅ You earned 2 $FOOT!');
+                await submitReferralRequest(friendCode, currentUserId);
+                err.innerText = ''; showModal('Submitted', 'Your referral request has been submitted for admin approval. You will receive 2 $FOOT once approved.');
                 document.getElementById('friendCodeInput').value = '';
             } catch(e) { err.innerText = e.message; }
         });
