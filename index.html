@@ -164,7 +164,6 @@
         .ad-modal-progress-bar { height:100%; width:100%; background:linear-gradient(90deg,#228B22,#00ff00); transition:width 1s linear; }
         .loader { border:4px solid rgba(255,85,85,0.2); border-top:4px solid #ff5555; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:1rem auto; }
         @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
-        .apk-download-btn { background:linear-gradient(95deg,#ff3333,#990000); border:none; padding:0.9rem 1.5rem; border-radius:60px; font-weight:bold; color:white; font-size:1.1rem; text-decoration:none; display:inline-block; width:100%; margin:0.8rem 0; cursor:pointer; box-shadow:0 0 15px rgba(255,50,50,0.5); }
         .airdrop-premium { width:100%; max-width:420px; margin:0 auto; text-align:center; }
         .airdrop-logo-wrapper { position:relative; width:200px; height:200px; margin:1rem auto 2rem; }
         .airdrop-logo-core { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:3.5rem; color:#ffd700; filter:drop-shadow(0 0 12px #ffd700); z-index:2; animation:corePulse 1.8s ease-in-out infinite; }
@@ -571,7 +570,6 @@
         }
     }
 
-    // ===================== NEW: Load Referral Stats =====================
     async function loadReferralStats() {
         if (!currentUserId) return;
         const userDoc = await db.collection('users').doc(currentUserId).get();
@@ -714,6 +712,7 @@
                     setStorage('profile_username', username);
                     document.getElementById('usernameDisplay').innerText = username;
                     customModal.classList.remove('active');
+                    await saveUserToFirestore(); // ensure username and referralCode saved
                 } catch(e) { err.innerText = e.message; }
             });
         }
@@ -794,11 +793,19 @@
         // ===================== REFERRAL (PENDING AUTO) =====================
         async function submitReferralRequest(referrerCode, referredUserId) {
             if (!referredUserId || referrerCode === currentReferralCode) throw new Error('Invalid referral');
-            const existing = await db.collection('pendingReferrals')
+            
+            // Duplicate check without composite index: query by referredUserId only, then filter status in JS
+            const querySnapshot = await db.collection('pendingReferrals')
                 .where('referredUserId', '==', referredUserId)
-                .where('status', 'in', ['pending', 'approved'])
                 .get();
-            if (!existing.empty) throw new Error('You already have a referral pending or approved.');
+            
+            const hasExisting = querySnapshot.docs.some(doc => {
+                const data = doc.data();
+                return data.status === 'pending' || data.status === 'approved';
+            });
+            
+            if (hasExisting) throw new Error('You already have a referral pending or approved.');
+            
             await db.collection('pendingReferrals').add({
                 referrerCode: referrerCode,
                 referredUserId: referredUserId,
@@ -887,6 +894,9 @@
                 setStorage('profile_username', userData.username);
                 document.getElementById('usernameDisplay').innerText = userData.username;
             }
+
+            // Ensure referralCode is saved to Firestore immediately
+            await saveUserToFirestore();
 
             updateMiningStats();
             updateCircularTimer();
@@ -984,7 +994,7 @@
             showScreen('referralScreen'); 
             document.getElementById('refCodeDisplay').textContent = currentReferralCode; 
             refreshReferralBadge();
-            await loadReferralStats();  // <-- add this line
+            await loadReferralStats();
         });
         document.getElementById('navTask').addEventListener('click', ()=> { showScreen('taskScreen'); renderTasks(); });
         document.getElementById('navEcosystem').addEventListener('click', ()=> showScreen('ecosystemScreen'));
