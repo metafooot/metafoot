@@ -164,7 +164,6 @@
         .ad-modal-progress-bar { height:100%; width:100%; background:linear-gradient(90deg,#228B22,#00ff00); transition:width 1s linear; }
         .loader { border:4px solid rgba(255,85,85,0.2); border-top:4px solid #ff5555; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:1rem auto; }
         @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
-        .apk-download-btn { background:linear-gradient(95deg,#ff3333,#990000); border:none; padding:0.9rem 1.5rem; border-radius:60px; font-weight:bold; color:white; font-size:1.1rem; text-decoration:none; display:inline-block; width:100%; margin:0.8rem 0; cursor:pointer; box-shadow:0 0 15px rgba(255,50,50,0.5); }
         .airdrop-premium { width:100%; max-width:420px; margin:0 auto; text-align:center; }
         .airdrop-logo-wrapper { position:relative; width:200px; height:200px; margin:1rem auto 2rem; }
         .airdrop-logo-core { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:3.5rem; color:#ffd700; filter:drop-shadow(0 0 12px #ffd700); z-index:2; animation:corePulse 1.8s ease-in-out infinite; }
@@ -179,7 +178,6 @@
         .airdrop-percent { font-size:1.2rem; color:#ff8888; margin-bottom:1.5rem; }
         .airdrop-subtitle { color:#ffaaaa; font-size:0.95rem; margin-bottom:0.5rem; }
         .task-announcement { background:rgba(255,85,85,0.05); border-radius:12px; padding:0.5rem; margin:0.4rem 0; }
-        /* New signup referral banner */
         .referral-signup-banner {
             background:rgba(255,85,85,0.1);
             border:1px solid #ff5555;
@@ -298,11 +296,11 @@
         </div>
     </div>
 
-    <!-- Referral Screen -->
+    <!-- Referral Screen (auto only) -->
     <div id="referralScreen" class="screen hidden">
         <div class="info-screen">
             <div class="info-card" style="cursor:default;max-width:500px;margin:0 auto;">
-                <div class="info-title"><i class="fas fa-link"></i> Retroactive Referrals</div>
+                <div class="info-title"><i class="fas fa-link"></i> Your Referral</div>
                 <div class="info-content">
                     <p><strong>Your Referral Code</strong><br>
                     <span style="font-family:monospace;font-size:1.2rem;" id="refCodeDisplay" class="blurred copyable-text">—</span></p>
@@ -311,16 +309,10 @@
                         <button id="copyRefCodeBtn" class="copy-id-btn"><i class="fas fa-copy"></i> Copy</button>
                     </div>
                     <div class="referral-box">
-                        <p><strong>Connect with a Friend</strong><br>Enter their referral code below. The reward will be credited after admin approval.</p>
-                        <div class="auth-input-group" style="margin-top:0.5rem;"><i class="fas fa-user-plus"></i><input type="text" id="friendCodeInput" placeholder="e.g., 7a3f9b2c4d1e" maxlength="12"></div>
-                        <div class="referral-buttons-row">
-                            <button id="submitReferralBtn" class="action-btn">Submit for Approval</button>
-                            <button id="copyInviteLinkBtn" class="action-btn">📋 Copy Invite Link</button>
-                        </div>
-                        <div class="error-message" id="referralError"></div>
+                        <p><strong>Share your invite link</strong><br>Earn 2 $FOOT for every friend who joins via your link. Rewards are granted after admin approval.</p>
+                        <button id="copyInviteLinkBtn" class="action-btn" style="margin-top:0.5rem;">📋 Copy Invite Link</button>
                     </div>
                     <div class="referral-box">
-                        <p><strong>Your Referral Rewards</strong><br>Referrals are pending admin approval. Once approved, you'll receive 2 $FOOT each.</p>
                         <p><strong>Approved Referrals:</strong> <span id="approvedReferralCount">0</span></p>
                         <div class="friends-list" id="friendsListContainer"></div>
                     </div>
@@ -504,7 +496,6 @@
         document.getElementById('signUpForm').style.display = mode==='signup' ? 'block' : 'none';
         document.getElementById('forgotPasswordForm').style.display = mode==='forgot' ? 'block' : 'none';
         document.getElementById('authModeLabel').innerText = mode==='signup' ? 'Create your account' : mode==='forgot' ? 'Reset your password' : 'Log in with your email';
-        // If showing signup, display referral code if present
         if (mode === 'signup') {
             const pendingRef = localStorage.getItem('pending_ref_code');
             const banner = document.getElementById('referralSignupBanner');
@@ -775,7 +766,7 @@
             } catch (e) { showModal('Purchase failed', e.message); }
         }
 
-        // ===================== REFERRAL (PENDING) =====================
+        // ===================== REFERRAL (PENDING AUTO) =====================
         async function submitReferralRequest(referrerCode, referredUserId) {
             if (!referredUserId || referrerCode === currentReferralCode) throw new Error('Invalid referral');
             const existing = await db.collection('pendingReferrals')
@@ -1148,19 +1139,6 @@
                 }
             }, 600);
         }
-
-        // Referral submit (pending) - manual
-        document.getElementById('submitReferralBtn').addEventListener('click', async ()=> {
-            const friendCode = document.getElementById('friendCodeInput').value.trim();
-            const err = document.getElementById('referralError');
-            if (!friendCode || friendCode.length!==12 || !/^[a-f0-9]+$/i.test(friendCode)) { err.innerText='Invalid referral code.'; return; }
-            if (friendCode === currentReferralCode) { err.innerText='You cannot refer yourself.'; return; }
-            try {
-                await submitReferralRequest(friendCode, currentUserId);
-                err.innerText = ''; showModal('Submitted', 'Your referral request has been submitted for admin approval. You will receive 2 $FOOT once approved.');
-                document.getElementById('friendCodeInput').value = '';
-            } catch(e) { err.innerText = e.message; }
-        });
 
         // Boost (ad)
         let adSecondsLeft = 10, adReady = false, adTimer = null;
