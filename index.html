@@ -164,6 +164,7 @@
         .ad-modal-progress-bar { height:100%; width:100%; background:linear-gradient(90deg,#228B22,#00ff00); transition:width 1s linear; }
         .loader { border:4px solid rgba(255,85,85,0.2); border-top:4px solid #ff5555; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:1rem auto; }
         @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+        .apk-download-btn { background:linear-gradient(95deg,#ff3333,#990000); border:none; padding:0.9rem 1.5rem; border-radius:60px; font-weight:bold; color:white; font-size:1.1rem; text-decoration:none; display:inline-block; width:100%; margin:0.8rem 0; cursor:pointer; box-shadow:0 0 15px rgba(255,50,50,0.5); }
         .airdrop-premium { width:100%; max-width:420px; margin:0 auto; text-align:center; }
         .airdrop-logo-wrapper { position:relative; width:200px; height:200px; margin:1rem auto 2rem; }
         .airdrop-logo-core { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:3.5rem; color:#ffd700; filter:drop-shadow(0 0 12px #ffd700); z-index:2; animation:corePulse 1.8s ease-in-out infinite; }
@@ -570,6 +571,30 @@
         }
     }
 
+    // ===================== NEW: Load Referral Stats =====================
+    async function loadReferralStats() {
+        if (!currentUserId) return;
+        const userDoc = await db.collection('users').doc(currentUserId).get();
+        if (userDoc.exists) {
+            const data = userDoc.data();
+            const approvedCount = data.approvedReferralCount || 0;
+            document.getElementById('approvedReferralCount').innerText = approvedCount;
+
+            const friendsList = document.getElementById('friendsListContainer');
+            const friends = data.friends || [];
+            friendsList.innerHTML = '';
+            if (friends.length === 0) {
+                friendsList.innerHTML = '<li>No approved referrals yet.</li>';
+            } else {
+                friends.forEach(f => {
+                    const li = document.createElement('li');
+                    li.textContent = `${f.accountId ? f.accountId.substring(0,8)+'…' : 'Unknown'} — ${new Date(f.timestamp).toLocaleDateString()}`;
+                    friendsList.appendChild(li);
+                });
+            }
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         // Auth listeners
         document.getElementById('signUpBtn').addEventListener('click', async () => {
@@ -955,7 +980,12 @@
         document.getElementById('menuBtn').addEventListener('click', ()=>{ document.getElementById('sideMenu').classList.toggle('open'); document.getElementById('menuOverlay').classList.toggle('active'); });
         document.getElementById('menuOverlay').addEventListener('click', ()=>{ document.getElementById('sideMenu').classList.remove('open'); document.getElementById('menuOverlay').classList.remove('active'); });
         document.getElementById('navHome').addEventListener('click', ()=> showScreen('miningScreen'));
-        document.getElementById('navReferral').addEventListener('click', async ()=> { showScreen('referralScreen'); document.getElementById('refCodeDisplay').textContent = currentReferralCode; refreshReferralBadge(); });
+        document.getElementById('navReferral').addEventListener('click', async ()=> { 
+            showScreen('referralScreen'); 
+            document.getElementById('refCodeDisplay').textContent = currentReferralCode; 
+            refreshReferralBadge();
+            await loadReferralStats();  // <-- add this line
+        });
         document.getElementById('navTask').addEventListener('click', ()=> { showScreen('taskScreen'); renderTasks(); });
         document.getElementById('navEcosystem').addEventListener('click', ()=> showScreen('ecosystemScreen'));
         document.querySelector('[data-action="profile"]').addEventListener('click', ()=> {
