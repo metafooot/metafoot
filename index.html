@@ -443,6 +443,15 @@
     const customModal = document.getElementById('customModalOverlay');
     const customModalBox = document.getElementById('customModalBox');
 
+    // ------------------ Referral URL handling ------------------
+    (function captureReferralFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const ref = params.get('ref');
+        if (ref && /^[a-f0-9]{12}$/i.test(ref)) {
+            localStorage.setItem('pending_ref_code', ref);
+        }
+    })();
+
     function userKey(key) { return currentUserId ? `${currentUserId}_${key}` : key; }
     function getStorage(key) { return localStorage.getItem(userKey(key)); }
     function setStorage(key, value) { localStorage.setItem(userKey(key), value); }
@@ -757,7 +766,16 @@
                 transaction.set(referrerRef, { friends: newFriends, totalEarned: (data.totalEarned||0)+reward }, { merge: true });
                 const referredRef = db.collection('users').doc(referredCode);
                 const referredDoc = await transaction.get(referredRef);
-                if (referredDoc.exists) transaction.set(referredRef, { balance: (referredDoc.data().balance||0)+reward }, { merge: true });
+                if (referredDoc.exists) {
+                    transaction.set(referredRef, { balance: (referredDoc.data().balance||0)+reward }, { merge: true });
+                } else {
+                    // New user – create doc with reward
+                    transaction.set(referredRef, {
+                        uid: referredCode,
+                        email: auth.currentUser?.email || '',
+                        balance: reward
+                    }, { merge: true });
+                }
             });
         }
 
@@ -851,6 +869,9 @@
             // Refresh referral badge
             refreshReferralBadge();
 
+            // Auto-connect referral if pending
+            await attemptAutoReferral();
+
             const summaries = ["Rental system","Train player","How you earn","Tournaments","League system","Knowledge challenge","Virtual Card","Football Academy","METAFOOT game"];
             let slideSeq = [], currentSlide = 0, slideTimeout, countdownInterval;
             function buildSlides() {
@@ -861,6 +882,28 @@
             function nextSlide() { currentSlide = (currentSlide+1) % slideSeq.length; document.getElementById('slideshowWrapper').style.transform = `translateX(-${currentSlide*100}%)`; resetTimer(); }
             function resetTimer() { clearTimeout(slideTimeout); clearInterval(countdownInterval); let t=40; document.getElementById('slideshowTimer').innerText = `Next slide in ${t}s`; countdownInterval = setInterval(()=>{ t--; if(t>=0) document.getElementById('slideshowTimer').innerText = `Next slide in ${t}s`; },1000); slideTimeout = setTimeout(()=>{ clearInterval(countdownInterval); nextSlide(); },40000); }
             buildSlides(); resetTimer();
+        }
+
+        // Auto-connect referral from URL
+        async function attemptAutoReferral() {
+            const pendingRef = localStorage.getItem('pending_ref_code');
+            if (!pendingRef || !currentUserId) return;
+            localStorage.removeItem('pending_ref_code'); // remove to avoid retries
+            if (pendingRef === currentReferralCode) return; // self-referral guard
+            try {
+                await addReferralFirestore(pendingRef, currentUserId);
+                // Fetch the updated balance from Firestore
+                const userDoc = await db.collection('users').doc(currentUserId).get();
+                const newBalance = userDoc.exists ? (userDoc.data().balance || 0) : getUserBalance();
+                setUserBalance(newBalance);
+                updateWalletDisplay();
+                refreshReferralBadge();
+                showModal('Referral Connected!', '🎉 You earned 2 $FOOT for being referred!');
+            } catch(e) {
+                if (e.message !== 'Already connected') {
+                    console.error('Auto referral failed:', e);
+                }
+            }
         }
 
         // ===================== EVENT LISTENERS =====================
@@ -1099,7 +1142,7 @@
             }, 600);
         }
 
-        // Referral submit
+        // Referral submit (manual)
         document.getElementById('submitReferralBtn').addEventListener('click', async ()=> {
             const friendCode = document.getElementById('friendCodeInput').value.trim();
             const err = document.getElementById('referralError');
@@ -1107,10 +1150,14 @@
             if (friendCode === currentReferralCode) { err.innerText='You cannot refer yourself.'; return; }
             try {
                 await addReferralFirestore(friendCode, currentUserId);
+                // Fetch updated balance from Firestore
+                const userDoc = await db.collection('users').doc(currentUserId).get();
+                const newBalance = userDoc.exists ? (userDoc.data().balance || 0) : getUserBalance();
+                setUserBalance(newBalance);
+                updateWalletDisplay();
+                refreshReferralBadge();
                 err.innerText = ''; showModal('Connected & Rewarded', '✅ You earned 2 $FOOT!');
                 document.getElementById('friendCodeInput').value = '';
-                saveUserToFirestore(); updateMiningStats();
-                refreshReferralBadge();
             } catch(e) { err.innerText = e.message; }
         });
 
