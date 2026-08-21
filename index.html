@@ -164,6 +164,7 @@
         .ad-modal-progress-bar { height:100%; width:100%; background:linear-gradient(90deg,#228B22,#00ff00); transition:width 1s linear; }
         .loader { border:4px solid rgba(255,85,85,0.2); border-top:4px solid #ff5555; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:1rem auto; }
         @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+        .apk-download-btn { background:linear-gradient(95deg,#ff3333,#990000); border:none; padding:0.9rem 1.5rem; border-radius:60px; font-weight:bold; color:white; font-size:1.1rem; text-decoration:none; display:inline-block; width:100%; margin:0.8rem 0; cursor:pointer; box-shadow:0 0 15px rgba(255,50,50,0.5); }
         .airdrop-premium { width:100%; max-width:420px; margin:0 auto; text-align:center; }
         .airdrop-logo-wrapper { position:relative; width:200px; height:200px; margin:1rem auto 2rem; }
         .airdrop-logo-core { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:3.5rem; color:#ffd700; filter:drop-shadow(0 0 12px #ffd700); z-index:2; animation:corePulse 1.8s ease-in-out infinite; }
@@ -329,7 +330,7 @@
                 <div class="info-content">
                     <ul class="task-list" id="dailyTasksList"></ul>
                     <div id="announcementTasksContainer"></div>
-                    <p style="margin-top:1rem;font-size:0.8rem;color:#ffaaaa;">⏱️ Cooldown: 30 minutes between claims</p>
+                    <p style="margin-top:1rem;font-size:0.8rem;color:#ffaaaa;">⏱️ Cooldown: 4 hours between claims</p>
                 </div>
             </div>
         </div>
@@ -391,6 +392,7 @@
                 <div class="player-worth" id="playerWorthDisplay">Worth: 0.0 $FOOT</div>
             </div>
             <div class="training-attributes" id="trainingAttributesContainer"></div>
+            <button class="back-btn" id="backFromTrainingBtn">← Back to Home</button>
             <div class="training-chart-container"><div class="training-chart-title">📊 Training Cost Halving</div><div id="trainingChartInner"></div></div>
             <div class="stats"><span>Balance: <strong id="trainingBalance">0</strong> $FOOT</span><span>Total Spent: <strong id="totalSpentDisplay">0.0</strong> $FOOT</span></div>
         </div>
@@ -442,7 +444,7 @@
     const TIER_SIZE = 20;
     const TG_LAST_KEY = 'metafoot_last_telegram_claim';
     const X_LAST_KEY = 'metafoot_last_x_claim';
-    const COOLDOWN_MS = 30 * 60 * 1000;
+    const COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
     const TOTAL_AIRDROP_CAP = 300000000;
     const customModal = document.getElementById('customModalOverlay');
     const customModalBox = document.getElementById('customModalBox');
@@ -793,19 +795,14 @@
         // ===================== REFERRAL (PENDING AUTO) =====================
         async function submitReferralRequest(referrerCode, referredUserId) {
             if (!referredUserId || referrerCode === currentReferralCode) throw new Error('Invalid referral');
-            
-            // Duplicate check without composite index: query by referredUserId only, then filter status in JS
-            const querySnapshot = await db.collection('pendingReferrals')
+            const existing = await db.collection('pendingReferrals')
                 .where('referredUserId', '==', referredUserId)
                 .get();
-            
-            const hasExisting = querySnapshot.docs.some(doc => {
+            const hasExisting = existing.docs.some(doc => {
                 const data = doc.data();
                 return data.status === 'pending' || data.status === 'approved';
             });
-            
             if (hasExisting) throw new Error('You already have a referral pending or approved.');
-            
             await db.collection('pendingReferrals').add({
                 referrerCode: referrerCode,
                 referredUserId: referredUserId,
@@ -815,7 +812,18 @@
         }
 
         // ===================== UI FUNCTIONS =====================
-        function updateMiningStats() { document.getElementById('miningRateDisplay').innerHTML = `${getCurrentRate(0)} $FOOT / day`; updateWalletDisplay(); }
+        async function updateMiningStats() {
+            let totalMiners = 0;
+            try {
+                const statsDoc = await db.collection('global').doc('stats').get();
+                if (statsDoc.exists) totalMiners = statsDoc.data().totalMiners || 0;
+                setStorage('global_total_miners', totalMiners);
+            } catch (e) {
+                totalMiners = parseInt(getStorage('global_total_miners')) || 0;
+            }
+            document.getElementById('miningRateDisplay').innerHTML = `${getCurrentRate(totalMiners)} $FOOT / day`;
+            updateWalletDisplay();
+        }
         function updateCircularTimer() {
             const last = getStorage(LAST_CLAIM_KEY);
             const timer = document.getElementById('timerText');
@@ -853,7 +861,7 @@
                         saveAttributes();
                         renderTrainingScreen();
                         updateWalletDisplay();
-                        saveUserToFirestore();
+                        // No Firestore save here – will save when leaving training screen
                     } else showModal('Need more $FOOT', `You need ${cost.toFixed(2)} $FOOT.`);
                 });
             });
@@ -864,7 +872,13 @@
             }).join('');
         }
         function openTrainingScreen() { loadAttributes(); renderTrainingScreen(); hideAllScreens(); document.getElementById('trainingScreen').classList.remove('hidden'); }
-        function hideAllScreens() { document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); }
+        function hideAllScreens() {
+            const trainingScreen = document.getElementById('trainingScreen');
+            if (trainingScreen && !trainingScreen.classList.contains('hidden')) {
+                saveUserToFirestore();
+            }
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        }
         function showScreen(id) { hideAllScreens(); document.getElementById(id).classList.remove('hidden'); }
         function setUIRole(role) {
             const roleHeader = document.getElementById('roleHeader'), actionContainer = document.getElementById('actionButtonsContainer');
@@ -895,19 +909,16 @@
                 document.getElementById('usernameDisplay').innerText = userData.username;
             }
 
-            // Ensure referralCode is saved to Firestore immediately
+            // Ensure referralCode is saved immediately
             await saveUserToFirestore();
 
             updateMiningStats();
             updateCircularTimer();
             const lastRole = getStorage('last_active_role') || 'player';
             setUIRole(lastRole);
-            setInterval(saveUserToFirestore, 300000);
+            // No background save interval
 
-            // Refresh badge
             refreshReferralBadge();
-
-            // Auto-submit pending referral if any
             await attemptAutoReferral();
 
             const summaries = ["Rental system","Train player","How you earn","Tournaments","League system","Knowledge challenge","Virtual Card","Football Academy","METAFOOT game"];
@@ -922,11 +933,9 @@
             buildSlides(); resetTimer();
         }
 
-        // Auto-submit pending referral from URL
         async function attemptAutoReferral() {
             const pendingRef = localStorage.getItem('pending_ref_code');
             if (!pendingRef || !currentUserId) return;
-            // Avoid self-referral
             if (pendingRef === currentReferralCode) {
                 localStorage.removeItem('pending_ref_code');
                 return;
@@ -937,7 +946,6 @@
                 showModal('Referral Submitted', 'Your referral request has been submitted for admin approval. You will receive 2 $FOOT once approved.');
             } catch (e) {
                 console.warn('Auto referral failed:', e.message);
-                // If already exists, just remove the pending code to avoid retries
                 localStorage.removeItem('pending_ref_code');
             }
         }
@@ -989,15 +997,11 @@
         // Navigation
         document.getElementById('menuBtn').addEventListener('click', ()=>{ document.getElementById('sideMenu').classList.toggle('open'); document.getElementById('menuOverlay').classList.toggle('active'); });
         document.getElementById('menuOverlay').addEventListener('click', ()=>{ document.getElementById('sideMenu').classList.remove('open'); document.getElementById('menuOverlay').classList.remove('active'); });
-        document.getElementById('navHome').addEventListener('click', ()=> showScreen('miningScreen'));
-        document.getElementById('navReferral').addEventListener('click', async ()=> { 
-            showScreen('referralScreen'); 
-            document.getElementById('refCodeDisplay').textContent = currentReferralCode; 
-            refreshReferralBadge();
-            await loadReferralStats();
-        });
+        document.getElementById('navHome').addEventListener('click', ()=> { if (!document.getElementById('miningScreen').classList.contains('hidden')) return; showScreen('miningScreen'); });
+        document.getElementById('navReferral').addEventListener('click', async ()=> { showScreen('referralScreen'); document.getElementById('refCodeDisplay').textContent = currentReferralCode; refreshReferralBadge(); await loadReferralStats(); });
         document.getElementById('navTask').addEventListener('click', ()=> { showScreen('taskScreen'); renderTasks(); });
         document.getElementById('navEcosystem').addEventListener('click', ()=> showScreen('ecosystemScreen'));
+        document.getElementById('backFromTrainingBtn').addEventListener('click', ()=> showScreen('miningScreen'));
         document.querySelector('[data-action="profile"]').addEventListener('click', ()=> {
             document.getElementById('sideMenu').classList.remove('open'); document.getElementById('menuOverlay').classList.remove('active');
             document.getElementById('profileUserId').textContent = currentUserId;
@@ -1143,7 +1147,18 @@
         function renderTasks() {
             const now = Date.now(), tgLast = parseInt(getStorage(TG_LAST_KEY))||0, xLast = parseInt(getStorage(X_LAST_KEY))||0;
             const tgReady = (now - tgLast) >= COOLDOWN_MS, xReady = (now - xLast) >= COOLDOWN_MS;
-            const fmt = (last) => { const rem = COOLDOWN_MS-(now-last); const m=Math.floor(rem/60000); const s=Math.floor((rem%60000)/1000); return `${m}:${s.toString().padStart(2,'0')}`; };
+            const fmt = (last) => {
+                const rem = COOLDOWN_MS - (now - last);
+                if (rem <= 0) return 'Ready';
+                const totalMinutes = Math.floor(rem / 60000);
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                if (hours > 0) {
+                    return `${hours}h ${minutes}m`;
+                } else {
+                    return `${minutes}m`;
+                }
+            };
             document.getElementById('dailyTasksList').innerHTML = `
                 <li><span>📱 Visit Telegram Channel</span><button class="task-btn" id="telegramTaskBtn" ${tgReady?'':'disabled'}>${tgReady?'0.6 $FOOT':fmt(tgLast)}</button></li>
                 <li><span>🐦 Visit X (Twitter)</span><button class="task-btn" id="xTaskBtn" ${xReady?'':'disabled'}>${xReady?'0.6 $FOOT':fmt(xLast)}</button></li>`;
