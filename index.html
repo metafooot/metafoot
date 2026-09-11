@@ -444,7 +444,6 @@
     const customModal = document.getElementById('customModalOverlay');
     const customModalBox = document.getElementById('customModalBox');
 
-    // ===================== TOAST =====================
     function showToast(message, type) {
         const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
@@ -504,28 +503,71 @@
         }
     }
 
-    async function isUsernameAvailable(username) { const d = await db.collection('usernames').doc(username).get(); return !d.exists; }
+    async function isUsernameAvailable(username) {
+        try {
+            const d = await db.collection('usernames').doc(username).get();
+            return !d.exists;
+        } catch (e) {
+            console.error('isUsernameAvailable failed:', e);
+            return true;
+        }
+    }
+
+    // ============================================================
+    // ✅ FIXED reserveUsername — writes USER doc first, then username slot.
+    // ============================================================
     async function reserveUsername(uid, username) {
+        console.log('[reserveUsername] start', { uid, username });
         const userRef = db.collection('users').doc(uid);
         const usernameRef = db.collection('usernames').doc(username);
-        await db.runTransaction(async (t) => {
-            const uDoc = await t.get(userRef); const nDoc = await t.get(usernameRef);
-            if (nDoc.exists) throw new Error('Username already taken');
-            t.set(userRef, { username }, { merge: true });
-            t.set(usernameRef, { uid });
-        });
+
+        // Check the username slot (read-only)
+        let usernameTaken = false;
+        try {
+            const uDoc = await usernameRef.get();
+            if (uDoc.exists && uDoc.data().uid !== uid) usernameTaken = true;
+        } catch (e) {
+            console.warn('[reserveUsername] username check failed (non-fatal):', e);
+        }
+        if (usernameTaken) throw new Error('Username already taken.');
+
+        // WRITE the user doc first — critical piece
+        try {
+            await userRef.set({ username }, { merge: true });
+            console.log('[reserveUsername] user doc written');
+        } catch (e) {
+            console.error('[reserveUsername] user write failed:', e);
+            throw new Error('Could not save username: ' + (e.message || e.code || 'unknown'));
+        }
+
+        // Claim the username slot (best-effort)
+        try {
+            await usernameRef.set({ uid }, { merge: true });
+            console.log('[reserveUsername] username slot claimed');
+        } catch (e) {
+            console.warn('[reserveUsername] username slot claim failed (non-critical):', e);
+        }
+
+        return true;
     }
+
     async function changeUsername(newUsername) {
         if (!currentUserId) return false;
         const oldUsername = getStorage('profile_username');
-        if (!await isUsernameAvailable(newUsername)) { showToast('Username already taken', 'error'); return false; }
-        if (oldUsername) { try { await db.collection('usernames').doc(oldUsername).delete(); } catch(e) {} }
+        if (newUsername === oldUsername) return true;
+
         try {
             await reserveUsername(currentUserId, newUsername);
+            if (oldUsername && oldUsername !== newUsername) {
+                try { await db.collection('usernames').doc(oldUsername).delete(); } catch(e) {}
+            }
             setStorage('profile_username', newUsername);
             document.getElementById('usernameDisplay').innerText = newUsername;
             return true;
-        } catch(e) { showToast('Could not change username', 'error'); return false; }
+        } catch (e) {
+            showToast(e.message || 'Could not change username', 'error');
+            return false;
+        }
     }
 
     function updateAmbassadorBadge(tier) {
@@ -623,7 +665,6 @@
             if (!currentUserId) return;
             const claimed = getStorage('claimedAnnouncements');
             await db.collection('users').doc(currentUserId).set({
-                uid: currentUserId,
                 email: auth.currentUser.email,
                 attributes: playerAttrs,
                 trainingEligible: trainingEligible,
@@ -633,26 +674,34 @@
             }, { merge: true });
         }
 
-        async function promptForUsername() {
-            customModalBox.innerHTML = `
-                <h3 style="color:#ffaaaa;">Choose Your Username</h3>
-                <p style="color:#ffcccc; margin-bottom:1rem;">You need a username to continue.</p>
-                <div class="auth-input-group"><i class="fas fa-user"></i><input type="text" id="setUsernameInput" placeholder="Username (3-20 chars)" maxlength="20"></div>
-                <div class="error-message" id="setUsernameError"></div>
-                <button class="action-btn" id="setUsernameBtn">Set Username</button>`;
-            customModal.classList.add('active');
-            document.getElementById('setUsernameBtn').addEventListener('click', async () => {
-                const username = document.getElementById('setUsernameInput').value.trim();
-                const err = document.getElementById('setUsernameError');
-                if (!username || username.length < 3 || username.length > 20 || !/^[a-zA-Z0-9_]+$/.test(username)) { err.innerText = 'Username must be 3-20 chars (letters, numbers, underscores).'; return; }
-                if (!await isUsernameAvailable(username)) { err.innerText = 'Username already taken.'; return; }
-                try {
-                    await reserveUsername(currentUserId, username);
-                    setStorage('profile_username', username);
-                    document.getElementById('usernameDisplay').innerText = username;
-                    customModal.classList.remove('active');
-                    await saveUserToFirestore();
-                } catch(e) { err.innerText = e.message; }
+        // ✅ FIXED: returns a Promise that resolves once the user has set a username
+        function promptForUsername() {
+            return new Promise((resolve) => {
+                customModalBox.innerHTML = `
+                    <h3 style="color:#ffaaaa;">Choose Your Username</h3>
+                    <p style="color:#ffcccc; margin-bottom:1rem;">You need a username to continue.</p>
+                    <div class="auth-input-group"><i class="fas fa-user"></i><input type="text" id="setUsernameInput" placeholder="Username (3-20 chars)" maxlength="20"></div>
+                    <div class="error-message" id="setUsernameError"></div>
+                    <button class="action-btn" id="setUsernameBtn">Set Username</button>`;
+                customModal.classList.add('active');
+                document.getElementById('setUsernameBtn').addEventListener('click', async () => {
+                    const username = document.getElementById('setUsernameInput').value.trim();
+                    const err = document.getElementById('setUsernameError');
+                    if (!username || username.length < 3 || username.length > 20 || !/^[a-zA-Z0-9_]+$/.test(username)) {
+                        err.innerText = 'Username must be 3-20 chars (letters, numbers, underscores).'; return;
+                    }
+                    if (!await isUsernameAvailable(username)) { err.innerText = 'Username already taken.'; return; }
+                    try {
+                        await reserveUsername(currentUserId, username);
+                        setStorage('profile_username', username);
+                        document.getElementById('usernameDisplay').innerText = username;
+                        customModal.classList.remove('active');
+                        resolve(username);
+                    } catch(e) {
+                        console.error('[promptForUsername] reserve failed:', e);
+                        err.innerText = e.message || 'Failed to save username. Please try again.';
+                    }
+                });
             });
         }
 
@@ -821,12 +870,9 @@
             updateTrainingButton();
         }
 
-        // ===================== WALLET: SEND =====================
-        // ⛔ ONLY sender needs 800 $FOOT training spent. Recipient eligibility NOT required.
         async function sendCoin(toInput, amount) {
             if (!currentUserId) throw new Error('Not logged in');
             if (!toInput || amount <= 0) throw new Error('Invalid recipient or amount');
-            // ⛔ Only the SENDER must be eligible
             if (!trainingEligible) throw new Error(`You need to spend at least ${MIN_TRAINING_SPENT_FOR_SELLING} $FOOT on training to send $FOOT.`);
 
             let recipientUid = null, recipientName = '';
@@ -844,9 +890,6 @@
             if (!rDoc.exists) throw new Error('Recipient not found');
             const rData = rDoc.data();
             recipientName = rData.username || recipientUid.substring(0,8);
-
-            // ✅ REMOVED: Recipient eligibility check.
-            // Anyone can receive $FOOT — even if they haven't trained.
 
             const userRef = db.collection('users').doc(currentUserId);
             const transferRef = db.collection('transfers').doc();
@@ -872,8 +915,6 @@
             renderWalletHistory();
         }
 
-        // ===================== WALLET: RECEIVE (auto-credit pending) =====================
-        // ✅ Anyone can receive — no eligibility check on receiver side.
         async function processIncomingTransfers() {
             if (!currentUserId) return;
             try {
@@ -972,7 +1013,6 @@
             } catch(e) { c.innerHTML = '<p style="color:#ff8888;">Failed to load.</p>'; }
         }
 
-        // ===================== SEND MODAL (sender eligibility gated) =====================
         function openSendModal() {
             if (!trainingEligible) { showToast(`Need ${MIN_TRAINING_SPENT_FOR_SELLING} $FOOT spent on training to send`, 'error'); return; }
             customModalBox.innerHTML = `
@@ -1017,8 +1057,6 @@
             });
         }
 
-        // ===================== BUY $FOOT (NO ELIGIBILITY CHECK) =====================
-        // ✅ Anyone (eligible or not) can buy $FOOT from us.
         function openBuyModal() {
             customModalBox.innerHTML = `
                 <h3 style="color:#ffaaaa;">Buy $FOOT</h3>
@@ -1095,9 +1133,15 @@
             currentReferralCode = getStorage(REF_CODE_V2_KEY);
             const userData = await loadUserFromFirestore(user.uid);
 
-            if (!userData || !userData.username) await promptForUsername();
-            else { setStorage('profile_username', userData.username); document.getElementById('usernameDisplay').innerText = userData.username; }
+            // ✅ This now truly waits for the user to enter a username before continuing
+            if (!userData || !userData.username) {
+                await promptForUsername();
+            } else {
+                setStorage('profile_username', userData.username);
+                document.getElementById('usernameDisplay').innerText = userData.username;
+            }
 
+            // Now safe to save full profile — user doc exists with username
             await saveUserToFirestore();
             await loadTrainingStatus();
             updateMiningStats();
